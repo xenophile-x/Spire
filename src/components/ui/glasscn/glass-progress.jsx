@@ -1,0 +1,57 @@
+"use client";;
+import { Progress as ProgressPrimitive } from "@base-ui/react/progress";
+
+import { glassVariantStyles } from "@/lib/glass-variants";
+import { cn } from "@/lib/utils";
+
+import { LiquidGlass } from "./liquid-glass";
+
+const progressIndicatorStyles =
+  "relative z-10 h-full rounded-none bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] transition-all";
+
+function GlassProgress({
+  className,
+  children,
+  value,
+  glassVariant = "liquid-refract",
+  ...props
+}) {
+  return (
+    <ProgressPrimitive.Root
+      value={value}
+      data-slot="glass-progress"
+      data-glass-variant={glassVariant}
+      className={cn("flex h-2 w-full flex-wrap gap-3", className)}
+      {...props}>
+      {children}
+      <GlassProgressTrack glassVariant={glassVariant} />
+    </ProgressPrimitive.Root>
+  );
+}
+
+function GlassProgressTrack({
+  glassVariant
+}) {
+  const track = (
+    <ProgressPrimitive.Track
+      data-slot="glass-progress-track"
+      className={cn(
+        "relative flex h-full w-full items-center overflow-hidden rounded-full",
+        glassVariant === "liquid-refract" ? "bg-transparent" : glassVariantStyles[glassVariant]
+      )}>
+      <ProgressPrimitive.Indicator data-slot="glass-progress-indicator" className={progressIndicatorStyles} />
+    </ProgressPrimitive.Track>
+  );
+
+  if (glassVariant === "liquid-refract") {
+    return (
+      <LiquidGlass className="h-full w-full rounded-full" blur={2} refraction={0}>
+        {track}
+      </LiquidGlass>
+    );
+  }
+
+  return track;
+}
+
+export { GlassProgress };
