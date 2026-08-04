@@ -1,6 +1,8 @@
 {
+
   "compilerOptions": {
     "baseUrl": ".",
+   //this add to remove the errpr man !
     "ignoreDeprecations": "6.0",
     "paths": {
       "@/*": ["./src/*"]
