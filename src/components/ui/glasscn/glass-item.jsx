@@ -2,37 +2,33 @@
 import { glassVariantStyles } from "@/lib/glass-variants";
 import { cn } from "@/lib/utils";
 
-import { Button } from "../button";
+import { Item } from "../item";
 import { LiquidGlass } from "./liquid-glass";
 
-function GlassButton({
+function GlassItem({
   className,
   glassVariant = "liquid-refract",
   ...props
 }) {
   if (glassVariant === "liquid-refract") {
     return (
-      <LiquidGlass className={className}>
-        <Button
-          data-slot="glass-button"
+      <LiquidGlass className="rounded-2xl">
+        <Item
+          data-slot="glass-item"
           data-glass-variant={glassVariant}
-          className="text-foreground cursor-pointer bg-transparent border-0 shadow-none w-full h-full"
+          className={cn("text-foreground border-0 bg-transparent shadow-none", className)}
           {...props} />
       </LiquidGlass>
     );
   }
 
   return (
-    <Button
-      data-slot="glass-button"
+    <Item
+      data-slot="glass-item"
       data-glass-variant={glassVariant}
-      className={cn(
-        "text-foreground cursor-pointer",
-        glassVariantStyles[glassVariant],
-        className
-      )}
+      className={cn("text-foreground", glassVariantStyles[glassVariant], className)}
       {...props} />
   );
 }
 
-export { GlassButton };
+export { GlassItem };

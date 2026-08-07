@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { LiquidGlass } from "./liquid-glass";
 
 const progressIndicatorStyles =
-  "relative z-10 h-full rounded-none bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] transition-all";
+  "relative z-10 h-full rounded-none bg-white/70 shadow-[0_0_6px_rgba(255,255,255,0.45)] transition-all";
 
 function GlassProgress({
   className,

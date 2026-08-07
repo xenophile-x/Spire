@@ -1,128 +1,126 @@
-// GlassSearchBar.jsx
-import React, { useState } from 'react';
-import 'material-symbols/rounded.css';
+import React, { useState, useEffect, useRef } from "react";
+import "material-symbols/rounded.css";
+import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
+import { GlassIcon } from "@/components/ui/glasscn/glass-icon";
+import { cn } from "@/lib/utils";
 
-export default function GlassSearchBar({ 
-  onSearch = () => {}, 
-  onBack, 
+export default function GlassSearchBar({
+  onSearch = () => {},
+  onBack,
   onForward,
   canGoBack = true,
   canGoForward = true,
-  onThemeToggle // <--- Added prop here
+  onThemeToggle,
 }) {
-  const [searchValue, setSearchValue] = useState('');
+  const [query, setQuery] = useState("");
+  const searchRef = useRef(null);
+  const debounceRef = useRef(null);
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    if (searchValue.trim()) {
-      onSearch(searchValue);
-    }
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        // do nothing special on outside click
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleChange = (e) => {
+    const value = e.target.value;
+    setQuery(value);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      onSearch(value);
+    }, 150);
   };
 
-  const handleBack = () => {
-    if (onBack) {
-      onBack();
-    } else if (typeof window !== 'undefined') {
-      window.history.back();
-    }
-  };
-
-  const handleForward = () => {
-    if (onForward) {
-      onForward();
-    } else if (typeof window !== 'undefined') {
-      window.history.forward();
-    }
+  const handleClear = (e) => {
+    e.stopPropagation();
+    setQuery("");
+    onSearch("");
   };
 
   return (
-    <header className="w-full max-w-2xl mx-auto p-5 select-none font-sans">
-      <div className="flex items-center justify-between h-14 px-3 bg-white/10 backdrop-blur-2xl border border-white/40 rounded-full shadow-2xl gap-3">
-        
-        {/* Left Action Buttons Group */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button 
-            type="button"
-            onClick={handleBack}
+    <header className="w-full max-w-2xl mx-auto p-4 select-none font-sans relative" ref={searchRef}>
+      <LiquidGlass
+        blur={12}
+        refraction={20}
+        saturation={1.4}
+        className="flex h-16 items-center justify-between gap-3 rounded-full px-4 shadow-xl border border-white/5 [--liquid-glass-rim-light:rgba(255,255,255,0.6)] [--liquid-glass-rim-width:1px]"
+      >
+        <div className="flex items-center gap-2.5 shrink-0">
+          <GlassIcon
+            size="sm"
+            onClick={onBack || (() => window.history.back())}
             disabled={!canGoBack}
-            className={`w-9 h-9 rounded-full bg-black/15 flex items-center justify-center text-white/70 transition-all shrink-0 focus:outline-none ${
-              canGoBack 
-                ? 'hover:bg-black/25 active:scale-95 cursor-pointer text-white/80' 
-                : 'opacity-40 cursor-not-allowed text-white/30'
-            }`}
-            title="Back"
+            aria-label="Go back"
+            className={cn(
+              "text-white/60 rounded-full flex items-center justify-center p-0 h-10 w-10 border border-white/5 hover:border-white/10 active:scale-95 transition-all",
+              !canGoBack && "opacity-30 cursor-not-allowed border-none"
+            )}
+            liquidProps={{ blur: 2, refraction: 2, saturation: 1 }}
           >
-            <span 
-              className="material-symbols-rounded text-lg select-none"
-              style={{ fontVariationSettings: "'wght' 200" }}
-            >
-              undo
-            </span>
-          </button>
+            <span className="material-symbols-rounded text-lg leading-none">undo</span>
+          </GlassIcon>
 
-          <button 
-            type="button"
-            onClick={handleForward}
+          <GlassIcon
+            size="sm"
+            onClick={onForward || (() => window.history.forward())}
             disabled={!canGoForward}
-            className={`w-9 h-9 rounded-full bg-black/15 flex items-center justify-center text-white/70 transition-all shrink-0 focus:outline-none ${
-              canGoForward 
-                ? 'hover:bg-black/25 active:scale-95 cursor-pointer text-white/80' 
-                : 'opacity-40 cursor-not-allowed text-white/30'
-            }`}
-            title="Forward"
+            aria-label="Go forward"
+            className={cn(
+              "text-white/60 rounded-full flex items-center justify-center p-0 h-10 w-10 border border-white/5 hover:border-white/10 active:scale-95 transition-all",
+              !canGoForward && "opacity-30 cursor-not-allowed border-none"
+            )}
+            liquidProps={{ blur: 2, refraction: 2, saturation: 1 }}
           >
-            <span 
-              className="material-symbols-rounded text-lg select-none"
-              style={{ fontVariationSettings: "'wght' 200" }}
-            >
-              redo
-            </span>
-          </button>
+            <span className="material-symbols-rounded text-lg leading-none">redo</span>
+          </GlassIcon>
         </div>
-
-        {/* Middle Input Capsule */}
-        <form 
-          onSubmit={handleSearchSubmit}
-          className="flex-1 max-w-md flex items-center justify-center h-8 px-2 bg-black/20 rounded-full text-white/90 focus-within:ring-1 focus-within:ring-white/30 overflow-hidden"
+        <LiquidGlass
+          blur={4}
+          refraction={6}
+          saturation={1.2}
+          variant="liquid"
+          className="relative flex h-10 max-w-lg flex-1 items-center justify-between overflow-hidden rounded-full px-3.5 border border-white/5 shadow-inner [--liquid-glass-rim-width:0.5px]"
         >
-          <button 
-            type="submit"
-            className="flex items-center justify-center text-white/40 hover:text-white/70 transition-colors shrink-0 focus:outline-none"
-            title="Search"
-          >
-            <span 
-              className="material-symbols-rounded text-sm select-none scale-75 origin-center" 
-              style={{ fontVariationSettings: "'wght' 500" }}
-            >
+          <div className="flex w-full items-center gap-2">
+            <span className="material-symbols-rounded shrink-0 text-sm text-white/40">
               search
             </span>
-          </button>
-          
-          <input
-            type="text"
-            value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
-            className="w-full bg-transparent text-white placeholder-white/50 text-xs font-normal focus:outline-none tracking-wide px-2"
-            placeholder="Search by title,album,artists..."
-          />
-        </form>
 
-        {/* Right Theme Button */}
-        <button 
-          type="button"
-          onClick={onThemeToggle} // <--- Connected click handler here
-          className="w-8 h-8 rounded-full bg-black/15 hover:bg-black/25 flex items-center justify-center text-white/70 transition-all active:scale-95 shrink-0 focus:outline-none cursor-pointer"
-          title="Toggle Theme"
+            <input
+              type="text"
+              value={query}
+              onChange={handleChange}
+              className="w-full bg-transparent text-sm font-medium tracking-wide text-white/90 placeholder-white70 focus:outline-none border-0 shadow-none focus-visible:ring-0 p-0"
+              placeholder="Search by title, artist..."
+            />
+          </div>
+
+          {query && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="shrink-0 cursor-pointer rounded-full p-1 text-white/30 transition-all hover:bg-white/20 hover:text-white ml-2 flex items-center justify-center"
+            >
+              <span className="material-symbols-rounded block text-sm leading-none">close</span>
+            </button>
+          )}
+        </LiquidGlass>
+
+        <GlassIcon
+          size="sm"
+          onClick={onThemeToggle}
+          aria-label="Toggle theme"
+          className="shrink-0 text-white/60  flex items-center justify-center p-0 h-10 w-10 border border-white/5 hover:border-white/10 active:scale-95 transition-all"
+          liquidProps={{ blur: 2, refraction: 2, saturation: 1 }}
         >
-          <span 
-            className="material-symbols-rounded text-lg select-none"
-            style={{ fontVariationSettings: "'wght' 300" }}
-          >
-            light_mode
-          </span>
-        </button>
-
-      </div>
+          <span className="material-symbols-rounded text-lg leading-none">light_mode</span>
+        </GlassIcon>
+      </LiquidGlass>
     </header>
   );
 }

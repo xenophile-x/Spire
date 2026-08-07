@@ -39,7 +39,9 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
   const itunesData = await matchItunesMetadata(fileNameStr);
 
   let trackInfo;
+  let itunesTrackId = null;
   if (itunesData) {
+    itunesTrackId = itunesData.trackId ? String(itunesData.trackId) : null;
     trackInfo = {
       title: itunesData.trackName,
       artist: itunesData.artistName,
@@ -100,6 +102,7 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
       filename: fileNameStr,
       trackInfo,
       lyricsData,
+      trackId: itunesTrackId,
     });
   } catch (err) {
     console.error("SUPABASE REGISTRATION ERROR:", err);

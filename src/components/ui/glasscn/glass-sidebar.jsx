@@ -1,0 +1,319 @@
+"use client";;
+import * as React from "react";
+
+import { glassVariantStyles } from "@/lib/glass-variants";
+import { cn } from "@/lib/utils";
+
+import { Input } from "../input";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../sheet";
+import { Sidebar, SidebarInset, SidebarMenuButton, SidebarMenuSubButton, SidebarTrigger, useSidebar } from "../sidebar";
+import { GlassSeparator } from "./glass-separator";
+import { LiquidGlass } from "./liquid-glass";
+
+const SIDEBAR_WIDTH_MOBILE = "18rem";
+
+const GlassSidebarVariantContext = React.createContext("clear");
+
+const glassSidebarVariableStyles = {
+  clear: [
+    "[--sidebar:rgba(255,255,255,0.18)]",
+    "[--sidebar-foreground:oklch(0.145_0_0)]",
+    "[--sidebar-accent:rgba(255,255,255,0.48)]",
+    "[--sidebar-accent-foreground:oklch(0.145_0_0)]",
+    "[--sidebar-border:rgba(255,255,255,0.34)]",
+    "[--sidebar-ring:rgba(255,255,255,0.38)]",
+    "dark:[--sidebar:rgba(0,0,0,0.28)]",
+    "dark:[--sidebar-foreground:oklch(0.985_0_0)]",
+    "dark:[--sidebar-accent:rgba(255,255,255,0.1)]",
+    "dark:[--sidebar-accent-foreground:oklch(0.985_0_0)]",
+    "dark:[--sidebar-border:rgba(255,255,255,0.12)]",
+    "dark:[--sidebar-ring:rgba(255,255,255,0.16)]",
+  ].join(" "),
+  frosted: [
+    "[--sidebar:rgba(255,255,255,0.4)]",
+    "[--sidebar-foreground:oklch(0.145_0_0)]",
+    "[--sidebar-accent:rgba(255,255,255,0.62)]",
+    "[--sidebar-accent-foreground:oklch(0.145_0_0)]",
+    "[--sidebar-border:rgba(255,255,255,0.3)]",
+    "[--sidebar-ring:rgba(255,255,255,0.32)]",
+    "dark:[--sidebar:rgba(0,0,0,0.38)]",
+    "dark:[--sidebar-foreground:oklch(0.985_0_0)]",
+    "dark:[--sidebar-accent:rgba(255,255,255,0.14)]",
+    "dark:[--sidebar-accent-foreground:oklch(0.985_0_0)]",
+    "dark:[--sidebar-border:rgba(255,255,255,0.1)]",
+    "dark:[--sidebar-ring:rgba(255,255,255,0.14)]",
+  ].join(" "),
+  subtle: [
+    "[--sidebar:rgba(255,255,255,0.14)]",
+    "[--sidebar-foreground:oklch(0.145_0_0)]",
+    "[--sidebar-accent:rgba(255,255,255,0.28)]",
+    "[--sidebar-accent-foreground:oklch(0.145_0_0)]",
+    "[--sidebar-border:rgba(0,0,0,0.05)]",
+    "[--sidebar-ring:rgba(255,255,255,0.28)]",
+    "dark:[--sidebar:rgba(255,255,255,0.05)]",
+    "dark:[--sidebar-foreground:oklch(0.985_0_0)]",
+    "dark:[--sidebar-accent:rgba(255,255,255,0.08)]",
+    "dark:[--sidebar-accent-foreground:oklch(0.985_0_0)]",
+    "dark:[--sidebar-border:rgba(255,255,255,0.08)]",
+    "dark:[--sidebar-ring:rgba(255,255,255,0.12)]",
+  ].join(" "),
+  liquid: [
+    "[--sidebar:rgba(255,255,255,0.22)]",
+    "[--sidebar-foreground:oklch(0.145_0_0)]",
+    "[--sidebar-accent:rgba(255,255,255,0.55)]",
+    "[--sidebar-accent-foreground:oklch(0.145_0_0)]",
+    "[--sidebar-border:rgba(255,255,255,0.42)]",
+    "[--sidebar-ring:rgba(255,255,255,0.45)]",
+    "dark:[--sidebar:rgba(255,255,255,0.06)]",
+    "dark:[--sidebar-foreground:oklch(0.985_0_0)]",
+    "dark:[--sidebar-accent:rgba(255,255,255,0.12)]",
+    "dark:[--sidebar-accent-foreground:oklch(0.985_0_0)]",
+    "dark:[--sidebar-border:rgba(255,255,255,0.16)]",
+    "dark:[--sidebar-ring:rgba(255,255,255,0.20)]",
+  ].join(" "),
+  "liquid-refract": [
+    "[--sidebar:rgba(255,255,255,0.18)]",
+    "[--sidebar-foreground:oklch(0.145_0_0)]",
+    "[--sidebar-accent:rgba(255,255,255,0.48)]",
+    "[--sidebar-accent-foreground:oklch(0.145_0_0)]",
+    "[--sidebar-border:rgba(255,255,255,0.34)]",
+    "[--sidebar-ring:rgba(255,255,255,0.38)]",
+    "dark:[--sidebar-foreground:oklch(0.985_0_0)]",
+    "dark:[--sidebar-accent:rgba(255,255,255,0.12)]",
+    "dark:[--sidebar-accent-foreground:oklch(0.985_0_0)]",
+    "dark:[--sidebar-border:rgba(255,255,255,0.15)]",
+    "dark:[--sidebar-ring:rgba(255,255,255,0.18)]",
+  ].join(" "),
+};
+
+const glassSidebarInnerSurfaceStyles = {
+  clear: [
+    "[&>[data-slot=sidebar-inner]]:backdrop-blur-[2px]",
+    "[&>[data-slot=sidebar-inner]]:backdrop-saturate-[1.9]",
+    "[&>[data-slot=sidebar-inner]]:shadow-[0_24px_80px_rgba(15,23,42,0.08)]",
+    "dark:[&>[data-slot=sidebar-inner]]:shadow-[0_24px_80px_rgba(0,0,0,0.28)]",
+  ].join(" "),
+  frosted: [
+    "[&>[data-slot=sidebar-inner]]:backdrop-blur-[16px]",
+    "[&>[data-slot=sidebar-inner]]:backdrop-saturate-[1.6]",
+    "[&>[data-slot=sidebar-inner]]:shadow-[0_24px_80px_rgba(15,23,42,0.08)]",
+    "dark:[&>[data-slot=sidebar-inner]]:shadow-[0_24px_80px_rgba(0,0,0,0.28)]",
+  ].join(" "),
+  subtle: [
+    "[&>[data-slot=sidebar-inner]]:backdrop-blur-[4px]",
+    "[&>[data-slot=sidebar-inner]]:backdrop-saturate-[1.5]",
+    "[&>[data-slot=sidebar-inner]]:shadow-[0_24px_80px_rgba(15,23,42,0.08)]",
+    "dark:[&>[data-slot=sidebar-inner]]:shadow-[0_24px_80px_rgba(0,0,0,0.28)]",
+  ].join(" "),
+  liquid: [
+    "[&>[data-slot=sidebar-inner]]:backdrop-blur-[12px]",
+    "[&>[data-slot=sidebar-inner]]:backdrop-saturate-[1.8]",
+    "[&>[data-slot=sidebar-inner]]:backdrop-brightness-[1.05]",
+    "dark:[&>[data-slot=sidebar-inner]]:backdrop-brightness-[0.95]",
+    "[&>[data-slot=sidebar-inner]]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.55),inset_0_-14px_28px_-10px_rgba(255,255,255,0.40),0_28px_80px_-12px_rgba(15,23,42,0.18)]",
+    "dark:[&>[data-slot=sidebar-inner]]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.22),inset_0_-14px_28px_-10px_rgba(180,210,255,0.16),0_32px_90px_-10px_rgba(0,0,0,0.55)]",
+  ].join(" "),
+  "liquid-refract": [
+    "[&>[data-slot=sidebar-inner]]:backdrop-blur-[1px]",
+    "[&>[data-slot=sidebar-inner]]:backdrop-saturate-[1.28]",
+    "[&>[data-slot=sidebar-inner]]:shadow-[0_18px_60px_rgba(0,0,0,0.36),inset_0_0_0_1px_rgba(255,255,255,0.035),inset_-9px_-7px_18px_rgba(0,0,0,0.48)]",
+    "dark:[&>[data-slot=sidebar-inner]]:shadow-[0_18px_60px_rgba(0,0,0,0.36),inset_0_0_0_1px_rgba(255,255,255,0.035),inset_-9px_-7px_18px_rgba(0,0,0,0.48)]",
+  ].join(" "),
+};
+
+const glassSidebarFloatingInnerStyles = [
+  "[&>[data-slot=sidebar-inner]]:group-data-[variant=floating]:rounded-[1.25rem]",
+  "[&>[data-slot=sidebar-inner]]:group-data-[variant=floating]:ring-1",
+  "[&>[data-slot=sidebar-inner]]:group-data-[variant=floating]:ring-white/25",
+  "dark:[&>[data-slot=sidebar-inner]]:group-data-[variant=floating]:ring-white/10",
+].join(" ");
+
+function useGlassSidebarVariant(glassVariant) {
+  const inheritedVariant = React.useContext(GlassSidebarVariantContext);
+
+  return glassVariant ?? inheritedVariant;
+}
+
+function GlassSidebarVariantProvider({
+  glassVariant,
+  children
+}) {
+  return <GlassSidebarVariantContext.Provider value={glassVariant}>{children}</GlassSidebarVariantContext.Provider>;
+}
+
+function getGlassSidebarRootClasses({
+  glassVariant,
+  variant
+}) {
+  return cn(
+    glassSidebarVariableStyles[glassVariant],
+    glassSidebarInnerSurfaceStyles[glassVariant],
+    variant === "floating" && glassSidebarFloatingInnerStyles
+  );
+}
+
+function getGlassSidebarStandaloneClasses(glassVariant) {
+  return cn(
+    glassVariantStyles[glassVariant],
+    glassSidebarVariableStyles[glassVariant],
+    "overflow-hidden",
+    "shadow-[0_24px_80px_rgba(15,23,42,0.08)] dark:shadow-[0_24px_80px_rgba(0,0,0,0.28)]"
+  );
+}
+
+function GlassSidebar({
+  collapsible = "offcanvas",
+  variant = "sidebar",
+  glassVariant = "liquid-refract",
+  className,
+  dir,
+  side = "left",
+  children,
+  ...props
+}) {
+  const { isMobile, openMobile, setOpenMobile } = useSidebar();
+
+  if (collapsible !== "none" && isMobile) {
+    return (
+      <GlassSidebarVariantProvider glassVariant={glassVariant}>
+        <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+          <SheetContent
+            dir={dir}
+            data-sidebar="sidebar"
+            data-slot="glass-sidebar"
+            data-mobile="true"
+            className={cn(
+              "w-(--sidebar-width) p-0 text-sidebar-foreground [&>button]:hidden",
+              getGlassSidebarStandaloneClasses(glassVariant)
+            )}
+            style={{
+              "--sidebar-width": SIDEBAR_WIDTH_MOBILE
+            }}
+            side={side}>
+            <SheetHeader className="sr-only">
+              <SheetTitle>Sidebar</SheetTitle>
+              <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+            </SheetHeader>
+            <div className="flex h-full w-full flex-col">{children}</div>
+          </SheetContent>
+        </Sheet>
+      </GlassSidebarVariantProvider>
+    );
+  }
+
+  const sidebar = (
+    <GlassSidebarVariantProvider glassVariant={glassVariant}>
+      <Sidebar
+        side={side}
+        variant={variant}
+        collapsible={collapsible}
+        className={cn(collapsible === "none"
+          ? getGlassSidebarStandaloneClasses(glassVariant)
+          : getGlassSidebarRootClasses({ glassVariant, variant }), glassVariant === "liquid-refract" && "bg-transparent border-0 shadow-none", className)}
+        {...props}>
+        {children}
+      </Sidebar>
+    </GlassSidebarVariantProvider>
+  );
+
+  if (glassVariant === "liquid-refract" && collapsible === "none") {
+    return <LiquidGlass className={cn("rounded-[1.75rem]", className)}>{sidebar}</LiquidGlass>;
+  }
+
+  return sidebar;
+}
+
+function GlassSidebarTrigger({
+  className,
+  glassVariant,
+  ...props
+}) {
+  const resolvedVariant = useGlassSidebarVariant(glassVariant);
+
+  return (
+    <SidebarTrigger
+      data-slot="glass-sidebar-trigger"
+      className={cn(
+        glassSidebarVariableStyles[resolvedVariant],
+        glassVariantStyles[resolvedVariant],
+        "border-sidebar-border bg-sidebar text-sidebar-foreground hover:bg-sidebar-accent",
+        className
+      )}
+      {...props} />
+  );
+}
+
+function GlassSidebarInset({
+  className,
+  ...props
+}) {
+  return (
+    <SidebarInset
+      data-slot="glass-sidebar-inset"
+      className={cn(
+        "md:peer-data-[variant=inset]:bg-white/10 md:peer-data-[variant=inset]:ring-1 md:peer-data-[variant=inset]:ring-white/20 md:peer-data-[variant=inset]:backdrop-blur-xl dark:md:peer-data-[variant=inset]:bg-black/20 dark:md:peer-data-[variant=inset]:ring-white/10",
+        className
+      )}
+      {...props} />
+  );
+}
+
+function GlassSidebarInput({
+  className,
+  ...props
+}) {
+  return (
+    <Input
+      data-slot="glass-sidebar-input"
+      data-sidebar="input"
+      className={cn(
+        "h-8 w-full placeholder:text-foreground/75",
+        "border-sidebar-border bg-sidebar text-sidebar-foreground shadow-[0_8px_30px_rgba(255,255,255,0.08)]",
+        className
+      )}
+      {...props} />
+  );
+}
+
+const GlassSidebarSeparator = GlassSeparator;
+
+function GlassSidebarMenuButton({
+  className,
+  ...props
+}) {
+  return (
+    <SidebarMenuButton
+      data-slot="glass-sidebar-menu-button"
+      className={cn(
+        "border border-transparent hover:border-sidebar-border hover:bg-sidebar-accent/60 data-active:border-sidebar-border data-active:bg-sidebar-accent data-active:shadow-[0_14px_40px_rgba(255,255,255,0.12)]",
+        className
+      )}
+      {...props} />
+  );
+}
+
+function GlassSidebarMenuSubButton({
+  className,
+  ...props
+}) {
+  return (
+    <SidebarMenuSubButton
+      data-slot="glass-sidebar-menu-sub-button"
+      className={cn(
+        "rounded-lg border border-transparent hover:border-sidebar-border hover:bg-sidebar-accent/60 data-active:border-sidebar-border data-active:bg-sidebar-accent data-active:shadow-[0_14px_40px_rgba(255,255,255,0.12)]",
+        className
+      )}
+      {...props} />
+  );
+}
+
+export {
+  GlassSidebar,
+  GlassSidebarInput,
+  GlassSidebarInset,
+  GlassSidebarMenuButton,
+  GlassSidebarMenuSubButton,
+  GlassSidebarSeparator,
+  GlassSidebarTrigger,
+  glassSidebarVariableStyles,
+};

@@ -2,37 +2,33 @@
 import { glassVariantStyles } from "@/lib/glass-variants";
 import { cn } from "@/lib/utils";
 
-import { Button } from "../button";
+import { Skeleton } from "../skeleton";
 import { LiquidGlass } from "./liquid-glass";
 
-function GlassButton({
+function GlassSkeleton({
   className,
   glassVariant = "liquid-refract",
   ...props
 }) {
   if (glassVariant === "liquid-refract") {
     return (
-      <LiquidGlass className={className}>
-        <Button
-          data-slot="glass-button"
+      <LiquidGlass className={cn("rounded-md", className)}>
+        <Skeleton
+          data-slot="glass-skeleton"
           data-glass-variant={glassVariant}
-          className="text-foreground cursor-pointer bg-transparent border-0 shadow-none w-full h-full"
+          className={cn("bg-transparent", className)}
           {...props} />
       </LiquidGlass>
     );
   }
 
   return (
-    <Button
-      data-slot="glass-button"
+    <Skeleton
+      data-slot="glass-skeleton"
       data-glass-variant={glassVariant}
-      className={cn(
-        "text-foreground cursor-pointer",
-        glassVariantStyles[glassVariant],
-        className
-      )}
+      className={cn(glassVariantStyles[glassVariant], className)}
       {...props} />
   );
 }
 
-export { GlassButton };
+export { GlassSkeleton };

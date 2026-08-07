@@ -27,13 +27,13 @@ export function useAudioPlayer() {
    * Fetches the Google Drive file binary using the access token
    * and creates a local Blob Object URL for streaming playback.
    */
-  const fetchDriveAudioBlobUrl = async (driveFileId) => {
-    const token = localStorage.getItem('google_drive_access_token');
+  const fetchDriveAudioBlobUrl = async (driveFileId, refreshToken) => {
+    let token = localStorage.getItem('google_drive_access_token');
     if (!token) {
       throw new Error('Google Drive access token missing.');
     }
 
-    const response = await fetch(
+    let response = await fetch(
       `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
       {
         headers: {
@@ -41,6 +41,21 @@ export function useAudioPlayer() {
         },
       }
     );
+
+    if (response.status === 401 && refreshToken) {
+      const newToken = await refreshToken();
+      if (newToken) {
+        token = newToken;
+        response = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+      }
+    }
 
     if (!response.ok) {
       throw new Error(`Failed to fetch audio stream (${response.status})`);

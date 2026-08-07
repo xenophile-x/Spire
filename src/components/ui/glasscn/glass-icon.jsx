@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { LiquidGlass } from "./liquid-glass";
 
 const glassIconVariants = cva(
-  "inline-flex shrink-0 items-center justify-center rounded-full text-white cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "inline-flex shrink-0 items-center justify-center rounded-full text-foreground cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       size: {
@@ -44,7 +44,7 @@ function GlassIcon({
       <LiquidGlass
         {...liquidProps}
         className={cn(
-          "w-fit rounded-full transition-transform duration-150 active:scale-95 motion-reduce:transition-none",
+          "w-fit rounded-full transition-transform duration-150 active:scale-95 motion-reduce:transition-none transform-gpu",
           "[--liquid-glass-rim-light:rgba(255,255,255,0.55)] [--liquid-glass-rim-width:1.5px] [--liquid-glass-rim-fade:8%]",
           surfaceClassName,
           liquidProps?.className
@@ -71,7 +71,7 @@ function GlassIcon({
       className={cn(
         glassIconVariants({ size }),
         glassVariantStyles[glassVariant],
-        "transition-transform duration-150 active:scale-95 motion-reduce:transition-none",
+        "transition-transform duration-150 active:scale-95 motion-reduce:transition-none transform-gpu",
         className
       )}
       {...props} />

@@ -1,6 +1,8 @@
 // src/components/LyricsModal.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { parseLRC, getActiveLyricIndex } from "@/utils/lyricsParser";
+import { GlassCard } from "@/components/ui/glasscn/glass-card";
+import { GlassButton } from "@/components/ui/glasscn/glass-button";
 
 export default function LyricsModal({
   isOpen,
@@ -14,14 +16,12 @@ export default function LyricsModal({
   const containerRef = useRef(null);
   const activeLineRef = useRef(null);
 
-  // Parse raw LRC string whenever track changes
   useEffect(() => {
     const rawLrc = activeTrack?.synced_lyrics || activeTrack?.syncedLyrics || "";
     const parsed = parseLRC(rawLrc);
     setLyrics(parsed);
   }, [activeTrack]);
 
-  // Sync active index with currentTime
   useEffect(() => {
     if (lyrics.length > 0) {
       const idx = getActiveLyricIndex(lyrics, currentTime);
@@ -29,7 +29,6 @@ export default function LyricsModal({
     }
   }, [currentTime, lyrics]);
 
-  // Auto-scroll active lyric line to center
   useEffect(() => {
     if (activeLineRef.current && containerRef.current) {
       activeLineRef.current.scrollIntoView({
@@ -42,33 +41,36 @@ export default function LyricsModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-24 z-50 flex justify-center px-4 transition-all animate-in fade-in slide-in-from-bottom-4 duration-300">
-      <div className="w-full max-w-2xl bg-black/70 border border-white/15 backdrop-blur-2xl rounded-3xl p-6 shadow-2xl text-white relative flex flex-col max-h-[380px]">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4 shrink-0">
+    <div className="animate-in fade-in slide-in-from-bottom-4 fixed inset-x-0 bottom-24 z-50 flex justify-center px-4 duration-300 transition-all">
+      <GlassCard
+        glassVariant="liquid-refract"
+        liquidProps={{
+          blur: 16,
+          refraction: 14,
+          className: "rounded-3xl shadow-2xl [--liquid-glass-rim-light:rgba(255,255,255,0.35)]",
+        }}
+        className="relative flex max-h-[380px] w-full max-w-2xl flex-col gap-0 py-0 text-white"
+      >
+        <div className="mb-4 flex shrink-0 items-center justify-between border-b border-white/10 px-6 pb-3 pt-6">
           <div className="flex items-center gap-2">
-            <span className="material-symbols-rounded text-yellow-400 text-xl">
-              lyrics
-            </span>
-            <h3 className="text-sm font-bold tracking-wide">
-              Live Synchronized Lyrics
-            </h3>
+            <span className="material-symbols-rounded text-xl text-yellow-400">lyrics</span>
+            <h3 className="text-sm font-bold tracking-wide">Live Synchronized Lyrics</h3>
           </div>
-          <button
+          <GlassButton
             onClick={onClose}
-            className="text-xs font-semibold px-3 py-1 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full transition-all cursor-pointer"
+            glassVariant="liquid-refract"
+            className="rounded-full px-3 py-1 text-xs font-semibold text-white"
           >
             Close
-          </button>
+          </GlassButton>
         </div>
 
-        {/* Scrollable Lyrics Container */}
         <div
           ref={containerRef}
-          className="flex-1 overflow-y-auto space-y-4 px-2 py-4 scrollbar-none text-center"
+          className="scrollbar-none flex-1 space-y-4 overflow-y-auto px-8 py-4 text-center"
         >
           {lyrics.length === 0 ? (
-            <div className="py-12 text-white/40 text-sm font-medium italic">
+            <div className="py-12 text-sm font-medium italic text-white/40">
               No synced lyrics available for this track.
             </div>
           ) : (
@@ -79,10 +81,10 @@ export default function LyricsModal({
                   key={idx}
                   ref={isActive ? activeLineRef : null}
                   onClick={() => onSeek && onSeek(line.time)}
-                  className={`transition-all duration-300 cursor-pointer text-lg font-bold select-none ${
+                  className={`text-md cursor-pointer font-bold transition-all duration-300 select-none ${
                     isActive
-                      ? "text-white scale-105 opacity-100 drop-shadow-[0_0_12px_rgba(255,255,255,0.6)]"
-                      : "text-white/30 hover:text-white/60 text-base"
+                      ? "scale-100 text-white opacity-100 drop-shadow-[0_0_12px_rgba(255,255,255,0.6)]"
+                      : "text-base text-white/30 hover:text-white/60"
                   }`}
                 >
                   {line.text}
@@ -91,7 +93,7 @@ export default function LyricsModal({
             })
           )}
         </div>
-      </div>
+      </GlassCard>
     </div>
   );
 }

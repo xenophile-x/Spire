@@ -2,46 +2,28 @@
 import React, { useState, useEffect, useRef } from "react";
 import "material-symbols/rounded.css";
 import AppleMusicBar, { parseLRC } from "@/components/AppleMusicBar";
+import { GlassScrimCard } from "@/components/ui/glasscn/glass-scrim-card";
+import { GlassIcon } from "@/components/ui/glasscn/glass-icon";
+import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
+import { getRecommendedTracks } from "@/utils/recommend";
+import { cn } from "@/lib/utils";
 
 // Default dummy tracks matching the reference visual stack
 const DEFAULT_TRACKS = [
   {
     id: "demo-1",
-    title: "Glance",
-    artist: "Daniel",
-    artworkUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    id: "demo-2",
-    title: "Ved",
-    artist: "Ritviz",
-    artworkUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    id: "demo-3",
-    title: "Formula 1 Theme",
-    artist: "Brian Tyler",
-    artworkUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    id: "demo-4",
-    title: "Modern Love",
-    artist: "Shankar Raja, Ilaiyaraaja",
-    artworkUrl: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    id: "demo-5",
-    title: "Blinding Lights",
-    artist: "The Weeknd",
-    artworkUrl: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&w=600&q=80",
-  },
+    title: "Default",
+    artist: "Default",
+    artworkUrl: "",
+  }
+ 
 ];
 
 export default function ExpandedLyricsView({
   userTracks = [],
   activeTrack,
   isPlaying,
-  setIsPlaying,
+  onTogglePlay,
   currentTime = 0,
   duration = 0,
   volume = 70,
@@ -52,21 +34,57 @@ export default function ExpandedLyricsView({
   onClose,
   isLiked,
   onToggleLike,
+  onNavigateToPlaylists,
+  playlists = [],
+  onAddToPlaylist,
+  onPlayTrack,
 }) {
   const [showLyrics, setShowLyrics] = useState(false);
-  const [carouselIndex, setCarouselIndex] = useState(2); // Center on 3rd track by default
   const lyricsContainerRef = useRef(null);
 
   // Guarantee multiple tracks for full Cover Flow carousel display
   const trackList = React.useMemo(() => {
-    if (userTracks && userTracks.length >= 3) return userTracks;
-    if (activeTrack) {
-      const list = [...DEFAULT_TRACKS];
-      list[2] = activeTrack;
-      return list;
+    if (!userTracks || userTracks.length === 0) {
+      return activeTrack ? [activeTrack, ...DEFAULT_TRACKS.slice(0, 9)] : DEFAULT_TRACKS;
     }
-    return DEFAULT_TRACKS;
+
+    const list = [];
+    if (activeTrack) {
+      list.push(activeTrack);
+    }
+
+    const recs = getRecommendedTracks(activeTrack, userTracks, 10);
+    recs.forEach((track) => {
+      if (list.length < 10 && !list.some((t) => t.id === track.id)) {
+        list.push(track);
+      }
+    });
+
+    if (list.length < 10) {
+      const remaining = userTracks.filter((track) => !list.some((t) => t.id === track.id));
+      const shuffled = [...remaining].sort(() => 0.5 - Math.random());
+      for (const track of shuffled) {
+        if (list.length >= 10) break;
+        list.push(track);
+      }
+    }
+
+    return list;
   }, [userTracks, activeTrack]);
+
+  // Find index of activeTrack in trackList
+  const activeTrackIndex = React.useMemo(() => {
+    if (!activeTrack) return 0;
+    const idx = trackList.findIndex((t) => t.id === activeTrack.id);
+    return idx >= 0 ? idx : 0;
+  }, [activeTrack, trackList]);
+
+  const [carouselIndex, setCarouselIndex] = useState(activeTrackIndex);
+
+  // Sync carouselIndex when activeTrackIndex changes (e.g. track changes in player)
+  useEffect(() => {
+    setCarouselIndex(activeTrackIndex);
+  }, [activeTrackIndex]);
 
   // Track currently selected/focused in carousel
   const currentTrack = trackList[carouselIndex] || trackList[0];
@@ -113,12 +131,15 @@ export default function ExpandedLyricsView({
       
       {/* Top Header: Liquid Glass Back Button */}
       <div className="w-full flex items-center justify-start max-w-6xl mx-auto z-20">
-        <button
+        <GlassIcon
+          size="md"
           onClick={onClose}
-          className="w-10 h-10 rounded-full bg-white/30 border border-white/40 backdrop-blur-3xl flex items-center justify-center text-white transition-all active:scale-95 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),0_10px_20px_rgba(0,0,0,0.3)] cursor-pointer"
+          aria-label="Close expanded view"
+          className="text-white"
+          liquidProps={{ blur: 8, refraction: 10 }}
         >
-          <span className="material-symbols-rounded">chevron_left</span>
-        </button>
+          <span className="material-symbols-rounded text-2xl">chevron_left</span>
+        </GlassIcon>
       </div>
 
       {/* CENTER VIEWPORT */}
@@ -126,9 +147,18 @@ export default function ExpandedLyricsView({
         
         {/* MODE A: Frosted Liquid Glass Lyrics Card */}
         {showLyrics ? (
-          <div className="w-full max-w-xl h-[460px] rounded-[36px] border border-white/40 bg-gradient-to-br from-white/20 via-white/5 to-black/50 backdrop-blur-3xl p-8 shadow-[inset_0_1px_2px_rgba(255,255,255,0.6),0_20px_50px_rgba(0,0,0,0.5)] flex flex-col justify-between relative overflow-hidden">
-            <div className="flex items-center gap-4 pb-4 border-b border-white/20 shrink-0 relative z-10">
-              <img src={artwork} alt={title} className="w-14 h-14 rounded-2xl object-cover border border-white/40 shadow-md" />
+           <GlassScrimCard
+             scrim={false}
+             liquidProps={{
+               blur: 16,
+               refraction: 15,
+               saturation: 1,
+               className: "rounded-[36px] [--liquid-glass-rim-light:rgba(255,255,255,0.45)]",
+             }}
+             className="relative flex h-[460px] w-full max-w-xl flex-col justify-between gap-0 overflow-hidden p-8 py-0"
+           >
+            <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-white/20 pb-4">
+               <img src={artwork} alt={title} className="w-16 h-16 rounded-2xl object-cover" />
               <div className="min-w-0">
                 <h3 className="text-2xl font-bold text-white truncate leading-tight drop-shadow-sm">{title}</h3>
                 <p className="text-sm font-medium text-white/70 truncate">{artist}</p>
@@ -160,7 +190,7 @@ export default function ExpandedLyricsView({
                 <p className="text-base text-white/50 italic">No synced lyrics available for this track.</p>
               )}
             </div>
-          </div>
+          </GlassScrimCard>
         ) : (
           /* MODE B: Classic Cover Flow Curved Carousel */
           <div className="relative w-full flex items-center justify-center h-[450px] [perspective:1000px] overflow-visible">
@@ -179,37 +209,50 @@ export default function ExpandedLyricsView({
               // Reverse angle direction to bend cards inward towards center
               const rotateY = isActive ? 0 : offset < 0 ? 38 : -38; 
 
+              // Fade out outer cards to avoid clutter
+              const opacity = Math.max(0, 1 - absOffset * 0.35);
+
               return (
-                <div
+                <LiquidGlass
                   key={track?.id || idx}
-                  onClick={() => setCarouselIndex(idx)}
-                  className="absolute transition-all duration-500 ease-out cursor-pointer rounded-[32px] border border-white/30 shadow-[0_20px_40px_rgba(0,0,0,0.6)] overflow-hidden flex flex-col backdrop-blur-xl bg-white/10"
+                  blur={10}
+                  refraction={12}
+                  saturation={1.35}
+                  onClick={() => {
+                    setCarouselIndex(idx);
+                    if (track && onPlayTrack) {
+                      onPlayTrack(track);
+                    }
+                  }}
+                  className={cn(
+                    "absolute flex cursor-pointer flex-col overflow-hidden rounded-[32px] shadow-[0_8px_24px_rgba(0,0,0,0.3)] transition-all duration-500 ease-out [--liquid-glass-rim-light:rgba(255,255,255,0.4)]",
+                    isActive ? "ring-2 ring-white/60 brightness-110" : "brightness-95"
+                  )}
                   style={{
                     width: "280px",
                     height: "370px",
                     zIndex,
                     transform: `translateX(${translateX}px) translateZ(${translateZ}px) rotateY(${rotateY}deg)`,
+                    opacity,
                   }}
                 >
-                  {/* Album Cover Container */}
-                  <div className="w-full h-[290px] p-2">
+                  <div className="relative h-[290px] w-full p-2">
                     <img
                       src={track?.artworkUrl || track?.cover || artwork}
                       alt={track?.title || title}
-                      className="w-full h-full object-cover rounded-[24px]"
+                      className="h-full w-full rounded-[24px] object-cover"
                     />
                   </div>
 
-                  {/* Glassmorphic Metadata Footer */}
-                  <div className="flex-1 px-4 pb-3 flex flex-col justify-center items-center text-center ">
-                    <p className="text-2xl font-medium text-white tracking-tight truncate w-full drop-shadow">
+                  <div className="flex flex-1 flex-col items-center justify-center px-4 pb-3 text-center">
+                    <p className="w-full truncate text-2xl font-medium tracking-tight text-white drop-shadow">
                       {track?.title || title}
                     </p>
-                    <p className="text-xl  text-white/70 truncate w-full">
+                    <p className="w-full truncate text-xl text-white/70">
                       {track?.artist || artist}
                     </p>
                   </div>
-                </div>
+                </LiquidGlass>
               );
             })}
           </div>
@@ -221,7 +264,7 @@ export default function ExpandedLyricsView({
         <AppleMusicBar
           activeTrack={currentTrack}
           isPlaying={isPlaying}
-          setIsPlaying={setIsPlaying}
+          setIsPlaying={onTogglePlay}
           currentTime={currentTime}
           duration={duration}
           volume={volume}
@@ -231,7 +274,10 @@ export default function ExpandedLyricsView({
           onPrevious={onPrevious}
           isLiked={isLiked}
           onToggleLike={onToggleLike}
+          onNavigateToPlaylists={onNavigateToPlaylists}
           onOpenExpandedView={() => setShowLyrics((prev) => !prev)}
+          playlists={playlists}
+          onAddToPlaylist={onAddToPlaylist}
         />
       </div>
 

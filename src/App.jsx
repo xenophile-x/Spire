@@ -10,16 +10,16 @@ import AppleMusicBar from "@/components/AppleMusicBar";
 import AudioPlayer from "@/components/AudioPlayer";
 import UploadModal from "@/components/UploadModal";
 import TemperedGlassCard from "@/components/ui/TemperedGlassCard";
+import { GlassButton } from "@/components/ui/glasscn/glass-button";
 
 import HomeView from "@/views/HomeView";
 import ExploreView from "@/views/ExploreView";
 import PlaylistsView from "@/views/PlaylistsView";
-import AnalyticsView from "@/views/AnalyticsView";
 import ExpandedLyricsView from "@/views/ExpandedLyricsView";
 import SettingsView from "@/views/SettingsView";
 
 import { processAudioUpload, fetchArtworkFromITunes } from "@/services/uploadPipeline";
-import { getUserLibrary } from "@/services/supabaseService";
+import { getUserLibrary, getListeningHistoryTrackIds, recordListen } from "@/services/supabaseService";
 import { uploadBackgroundToDrive } from "@/services/driveService";
 
 const DEFAULT_BG_IMAGE =
@@ -39,6 +39,7 @@ const WALLPAPERS = [
   "https://images.unsplash.com/photo-1781817388497-bd831004913b?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
   "https://images.unsplash.com/photo-1784704564341-d09f0023d30f?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
   "https://images.unsplash.com/photo-1777849077481-a6a18ecc4552?q=80&w=1925&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+  "https://pixabay.com/videos/download/video-340838_medium.mp4",
 ];
 
 const getBgUrlFromUser = (user, presetIdx, isPreset) => {
@@ -56,7 +57,7 @@ const getBgUrlFromUser = (user, presetIdx, isPreset) => {
 };
 
 function AppContent() {
-  const { user, googleAccessToken, signInWithGoogle, signOut } = useAuth();
+  const { user, loading, googleAccessToken, signInWithGoogle, signOut, refreshGoogleToken } = useAuth();
   const navigate = useNavigate();
 
   // Player state
@@ -64,17 +65,98 @@ function AppContent() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [seekTime, setSeekTime] = useState(null);
   const [volume, setVolume] = useState(70);
-  const [parsedLyrics, setParsedLyrics] = useState([]);
-  const [activeLyricIdx, setActiveLyricIdx] = useState(-1);
   const [likedTrackIds, setLikedTrackIds] = useState(() => new Set());
+  const [activePlaylistId, setActivePlaylistId] = useState(null);
+
+   // Played-track history (ordered track ids, most-recent-first) backing
+  // "Continue Listening" — sourced from the listening_history table.
+  const [playedTrackIds, setPlayedTrackIds] = useState([]);
 
   // Views state
   const [isExpandedViewOpen, setIsExpandedViewOpen] = useState(false);
 
+  // Global search query (drives HomeView filtering)
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Playlists state synced with localStorage
+  const [playlists, setPlaylists] = useState(() => {
+    const saved = localStorage.getItem("spire_playlists");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse playlists:", e);
+      }
+    }
+    return [
+      {
+        id: "1",
+        title: "Favorite Songs",
+        isFavorite: true,
+        isStarIcon: true,
+        image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80",
+        songIds: [],
+      },
+      {
+        id: "2",
+        title: "Work",
+        subtitle: " Playlist",
+        isFolder: true,
+        covers: ["https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=200&auto=format&fit=crop&q=80"],
+        songIds: [],
+      },
+      {
+        id: "3",
+        title: "Kids stuff",
+        image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+        songIds: [],
+      },
+      {
+        id: "4",
+        title: "Olivia's Best",
+        image: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80",
+        songIds: [],
+      },
+      {
+        id: "5",
+        title: "The Best for Work",
+        image: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=400&auto=format&fit=crop&q=80",
+        songIds: [],
+      },
+      {
+        id: "6",
+        title: "Pop Chill",
+        image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&auto=format&fit=crop&q=80",
+        songIds: [],
+      },
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("spire_playlists", JSON.stringify(playlists));
+  }, [playlists]);
+
+  useEffect(() => {
+    const favoritePlaylist = playlists.find((pl) => pl.id === "1");
+    if (favoritePlaylist) {
+      setLikedTrackIds(new Set(favoritePlaylist.songIds || []));
+    }
+  }, [playlists]);
+
   // Library & History state
   const [userTracks, setUserTracks] = useState([]);
-  const [listeningHistory, setListeningHistory] = useState([]);
+
+  // "Continue Listening": only tracks that have actually been played,
+  // matched against the loaded library so each card carries full metadata.
+  const continueListening = useMemo(
+    () =>
+      playedTrackIds
+        .map((id) => userTracks.find((t) => t.id === id))
+        .filter(Boolean),
+    [userTracks, playedTrackIds]
+  );
 
   // Upload modal state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -250,8 +332,11 @@ function AppContent() {
         }
 
         return {
-          id: rec.id,
+          id: trackObj.id || rec.track_id || rec.id,
+          user_track_id: rec.id,
           drive_file_id: rec.drive_file_id || rec.driveFileId,
+          uploaded_filename: rec.uploaded_filename || rec.uploadedFilename || "",
+          uploadedAt: rec.created_at,
           title,
           artist,
           cover: coverUrl,
@@ -262,17 +347,38 @@ function AppContent() {
       });
 
       const formatted = await Promise.all(formattedPromises);
-      setUserTracks(formatted);
+
+      const uniqueTracks = [];
+      const seenIds = new Set();
+      for (const track of formatted) {
+        if (!track.id || seenIds.has(track.id)) continue;
+        seenIds.add(track.id);
+        uniqueTracks.push(track);
+      }
+      setUserTracks(uniqueTracks);
     } catch (err) {
       console.error("Failed to load library:", err);
     }
   }, [user?.id]);
 
-  useEffect(() => {
-    loadLibrary();
-  }, [loadLibrary]);
+  const loadContinueListening = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      setPlayedTrackIds(await getListeningHistoryTrackIds(user.id, 8));
+    } catch (err) {
+      console.error("Failed to load continue listening:", err);
+    }
+  }, [user?.id]);
 
-  const handlePlayTrack = useCallback((track) => {
+  useEffect(() => {
+    const load = async () => {
+      await loadLibrary();
+      await loadContinueListening();
+    };
+    load();
+  }, [loadLibrary, loadContinueListening]);
+
+  const handlePlayTrack = useCallback((track, playlistId = null) => {
     setActiveTrack({
       id: track.id,
       title: track.title,
@@ -282,12 +388,39 @@ function AppContent() {
       synced_lyrics: track.synced_lyrics || track.syncedLyrics || "",
       driveFileId: track.drive_file_id || track.driveFileId,
     });
+    setActivePlaylistId(playlistId);
+    setPlayedTrackIds((prev) => {
+      const filtered = prev.filter((id) => id !== track.id);
+      return [track.id, ...filtered].slice(0, 8);
+    });
+    recordListen(track.id, track.primary_genre || null);
+    setCurrentTime(0);
+    setSeekTime(0);
     setIsPlaying(true);
-    setListeningHistory((prev) => [
-      { title: track.title, artist: track.artist, played_at: new Date().toISOString() },
-      ...prev,
-    ]);
   }, []);
+
+  const handleTogglePlay = useCallback(() => {
+    setIsPlaying((prev) => !prev);
+  }, []);
+
+  const handleSeek = useCallback((time) => {
+    setSeekTime(time);
+    setCurrentTime(time);
+  }, []);
+
+  const handleNextTrack = useCallback(() => {
+    if (!activeTrack || userTracks.length === 0) return;
+    const idx = userTracks.findIndex((t) => t.id === activeTrack.id);
+    const nextIdx = idx >= 0 ? (idx + 1) % userTracks.length : 0;
+    handlePlayTrack(userTracks[nextIdx]);
+  }, [activeTrack, userTracks, handlePlayTrack]);
+
+  const handlePreviousTrack = useCallback(() => {
+    if (!activeTrack || userTracks.length === 0) return;
+    const idx = userTracks.findIndex((t) => t.id === activeTrack.id);
+    const prevIdx = idx >= 0 ? (idx - 1 + userTracks.length) % userTracks.length : 0;
+    handlePlayTrack(userTracks[prevIdx]);
+  }, [activeTrack, userTracks, handlePlayTrack]);
 
   const handleFileUpload = useCallback(
     async (e) => {
@@ -297,6 +430,14 @@ function AppContent() {
       if (!googleAccessToken) {
         alert("Please login with Google first.");
         return;
+      }
+
+      const existing = userTracks.find((t) => t.uploaded_filename === file.name);
+      if (existing) {
+        const reupload = window.confirm(
+          `"${file.name}" is already in your library.\n\nUpload again?`
+        );
+        if (!reupload) return;
       }
 
       setUploadFile(file);
@@ -316,40 +457,71 @@ function AppContent() {
         setUploadError(err.message || "Upload failed");
       }
     },
-    [googleAccessToken, user, loadLibrary]
+    [googleAccessToken, user, loadLibrary, userTracks]
   );
+
+  const handleAddToPlaylist = useCallback((playlistId, trackId) => {
+    if (!trackId) return;
+    setPlaylists((prev) =>
+      prev.map((pl) => {
+        if (pl.id === playlistId) {
+          const songIds = pl.songIds || [];
+          if (songIds.includes(trackId)) {
+            alert(`Song is already in playlist "${pl.title}"`);
+            return pl;
+          }
+          return { ...pl, songIds: [...songIds, trackId] };
+        }
+        return pl;
+      })
+    );
+  }, []);
 
   const toggleLikeTrack = useCallback((trackId) => {
     if (!trackId) return;
-    setLikedTrackIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(trackId)) next.delete(trackId);
-      else next.add(trackId);
-      return next;
-    });
+    setPlaylists((prev) =>
+      prev.map((pl) => {
+        if (pl.id === "1") {
+          const songIds = pl.songIds || [];
+          const nextIds = songIds.includes(trackId)
+            ? songIds.filter((id) => id !== trackId)
+            : [...songIds, trackId];
+          return { ...pl, songIds: nextIds };
+        }
+        return pl;
+      })
+    );
   }, []);
 
-  if (!user) {
+  if (!user && !loading) {
     return (
       <div
         className="h-screen w-screen bg-cover bg-center bg-no-repeat text-white flex flex-col items-center justify-center p-4 relative"
         style={{ backgroundImage: `url("${DEFAULT_BG_IMAGE}")` }}
       >
         <div className="absolute inset-0 z-0 bg-black/30" />
-        <TemperedGlassCard className="p-8 max-w-md w-full text-center space-y-6 z-10 border border-white/20 bg-white/10 backdrop-blur-xl">
-          <button
+        <TemperedGlassCard className="z-10 w-full max-w-md space-y-6 p-8 text-center">
+          <GlassButton
             onClick={signInWithGoogle}
-            className="w-full bg-white/10 hover:bg-white text-white hover:text-black border border-white/20 font-semibold py-3 px-4 rounded-xl transition-all cursor-pointer shadow-lg"
+            glassVariant="liquid-refract"
+            className="w-full rounded-xl py-3 font-semibold text-white hover:text-black"
           >
             Sign in with Google
-          </button>
+          </GlassButton>
         </TemperedGlassCard>
       </div>
     );
   }
 
+  if (loading) {
+    return (
+      <div className="h-screen w-screen bg-black text-white flex items-center justify-center">
+        <div className="text-sm text-white/70">Loading...</div>
+      </div>
+    );
+  }
+
   return (
-    /* 1. ROOT APP CONTAINER: Fixed viewport (h-screen, overflow-hidden) */
     <div className="h-screen w-screen text-white font-sans flex flex-col relative overflow-hidden select-none">
       {/* Background Layers */}
       <div
@@ -362,7 +534,7 @@ function AppContent() {
         }`}
         style={{ backgroundImage: `url("${currentBg}")` }}
       />
-      <div className="absolute inset-0 pointer-events-none z-0 backdrop-blur-[1px]" />
+      <div className="absolute inset-0 pointer-events-none z-0 bg-black/10 backdrop-blur-[1px]" />
 
       {/* Audio Engine */}
       <AudioPlayer
@@ -370,77 +542,100 @@ function AppContent() {
         googleAccessToken={googleAccessToken}
         isPlaying={isPlaying}
         volume={volume}
-        currentTime={currentTime}
+        seekTime={seekTime}
         onTimeUpdate={setCurrentTime}
         onDurationChange={setDuration}
         onEnded={() => setIsPlaying(false)}
-        onLyricsParsed={setParsedLyrics}
-        onActiveLyricChange={setActiveLyricIdx}
+        onRefreshToken={refreshGoogleToken}
       />
 
       {isExpandedViewOpen ? (
         <ExpandedLyricsView
           activeTrack={activeTrack}
           isPlaying={isPlaying}
-          setIsPlaying={setIsPlaying}
+          onTogglePlay={handleTogglePlay}
           currentTime={currentTime}
           duration={duration}
-          onSeek={setCurrentTime}
+          volume={volume}
+          setVolume={setVolume}
+          onSeek={handleSeek}
+          onNext={handleNextTrack}
+          onPrevious={handlePreviousTrack}
           onClose={() => setIsExpandedViewOpen(false)}
-        />
+          isLiked={activeTrack?.id ? likedTrackIds.has(activeTrack.id) : false}
+          onToggleLike={() => toggleLikeTrack(activeTrack?.id)}
+          onNavigateToPlaylists={() => {
+            setIsExpandedViewOpen(false);
+            navigate("/playlists");
+          }}
+          playlists={playlists}
+          onAddToPlaylist={handleAddToPlaylist}
+           onPlayTrack={handlePlayTrack}
+           userTracks={userTracks}
+         />
       ) : (
         <>
           {/* Floating Left Bar */}
-          <div className="fixed left-4 top-1/2 -translate-y-1/2 z-50">
+          <div className="fixed left-35 top-1/2 -translate-y-1/2 z-50">
             <FloatingBar />
           </div>
 
-          {/* 2. MIDDLE AREA: Takes remaining vertical height using flex-1 min-h-0 */}
           <main className="flex-1 min-h-0 max-w-6xl w-full mx-auto px-6 pl-24 pt-6 pb-2 flex flex-col relative z-10">
             
-            {/* FIXED SEARCH BAR: shrink-0 keeps it fixed at top */}
-            <div className="shrink-0 mb-4">
-              <GlassSearchBar
-                onSearch={(q) => navigate(`/explore?q=${encodeURIComponent(q)}`)}
-                onThemeToggle={handleThemeToggle}
-              />
-            </div>
-
-            {/* 3. CARD CONTAINER: flex-1 min-h-0 prevents outer page expansion */}
-           <TemperedGlassCard className="flex-1 min-h-0 w-full border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col overflow-hidden">
-  
-  {/* ONLY THIS INNER CONTAINER SCROLLS */}
-  <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8 custom-scrollbar">
-    <Routes>
-      <Route
-        path="/"
-        element={
-          <HomeView
-            userTracks={userTracks}
-            isUploading={uploadStep > 0 && uploadStep < 4}
-            onFileUpload={handleFileUpload}
-            onPlayTrack={handlePlayTrack}
-          />
-        }
-      />
+            {/* FIXED SEARCH BAR Z-INDEX FIX: z-[100] and relative ensure dropdown is on top */}
+            <div className="shrink-0 mb-4 relative z-[100]">
+   <GlassSearchBar
+     onSelectSong={(selectedTrack) => {
+      handlePlayTrack(selectedTrack);
+      navigate("/");
+    }}
+     onSearch={(query) => {
+       setSearchQuery(query);
+       navigate("/");
+     }}
+     onThemeToggle={handleThemeToggle}
+  />
+</div>
+            {/* CARD CONTAINER: Explicitly kept z-10 so it stays beneath the search bar */}
+            <TemperedGlassCard className="relative z-10 flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+              
+              <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8 custom-scrollbar">
+                <Routes>
                   <Route
-                    path="/explore"
+                    path="/"
                     element={
-                      <ExploreView
-                        uploadedTracks={userTracks}
-                        onSelectTrack={handlePlayTrack}
-                        currentTrack={activeTrack}
+                      <HomeView
+                        userTracks={userTracks}
+                        searchQuery={searchQuery}
+                        isUploading={uploadStep > 0 && uploadStep < 4}
+                        onFileUpload={handleFileUpload}
+                        onPlayTrack={handlePlayTrack}
                       />
                     }
                   />
                   <Route
-                    path="/playlists"
-                    element={<PlaylistsView trackCount={likedTrackIds.size} />}
+                    path="/explore"
+                    element={
+                       <ExploreView
+                         userTracks={userTracks}
+                         onPlayTrack={handlePlayTrack}
+                         currentTrack={activeTrack}
+                         continueListening={continueListening}
+                       />
+                    }
                   />
                   <Route
-                    path="/analytics"
-                    element={<AnalyticsView listeningHistory={listeningHistory} />}
+                    path="/playlists"
+                    element={
+                      <PlaylistsView
+                        playlists={playlists}
+                        setPlaylists={setPlaylists}
+                        userTracks={userTracks}
+                        onPlayTrack={handlePlayTrack}
+                      />
+                    }
                   />
+
                   <Route
                     path="/settings"
                     element={
@@ -457,7 +652,7 @@ function AppContent() {
             </TemperedGlassCard>
           </main>
 
-          {/* 5. FIXED FOOTER PLAYER: shrink-0 keeps player pinned to bottom */}
+          {/* FIXED FOOTER PLAYER */}
           <footer className="shrink-0 z-40 p-2 bg-gradient-to-t from-black/90 via-black/60 to-transparent">
             <AppleMusicBar
               activeTrack={activeTrack}
@@ -467,10 +662,15 @@ function AppContent() {
               duration={duration}
               volume={volume}
               setVolume={setVolume}
-              onSeek={setCurrentTime}
+              onSeek={handleSeek}
+              onNext={handleNextTrack}
+              onPrevious={handlePreviousTrack}
               onOpenExpandedView={() => setIsExpandedViewOpen(true)}
+              onNavigateToPlaylists={() => navigate("/playlists")}
               isLiked={activeTrack?.id ? likedTrackIds.has(activeTrack.id) : false}
               onToggleLike={() => toggleLikeTrack(activeTrack?.id)}
+              playlists={playlists}
+              onAddToPlaylist={handleAddToPlaylist}
             />
           </footer>
         </>
