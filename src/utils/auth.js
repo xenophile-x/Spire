@@ -1,26 +1,23 @@
-// src/utils/auth.js
-
 const DRIVE_TOKEN_KEY = "spire_drive_access_token";
+const DRIVE_TOKEN_TIMESTAMP_KEY = "spire_drive_access_token_issued_at";
 
-/**
- * Saves Google OAuth access token to local storage.
- */
 export function setDriveAccessToken(token) {
   if (token) {
     localStorage.setItem(DRIVE_TOKEN_KEY, token);
+    localStorage.setItem(DRIVE_TOKEN_TIMESTAMP_KEY, String(Date.now()));
   }
 }
 
-/**
- * Retrieves the stored Google Drive access token.
- */
 export function getDriveAccessToken() {
   return localStorage.getItem(DRIVE_TOKEN_KEY);
 }
 
-/**
- * Clears stored OAuth tokens on sign-out.
- */
+export function getDriveTokenTimestamp() {
+  const raw = localStorage.getItem(DRIVE_TOKEN_TIMESTAMP_KEY);
+  return raw ? Number(raw) : null;
+}
+
 export function clearDriveAccessToken() {
   localStorage.removeItem(DRIVE_TOKEN_KEY);
+  localStorage.removeItem(DRIVE_TOKEN_TIMESTAMP_KEY);
 }

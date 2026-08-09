@@ -1,20 +1,16 @@
-/**
- * Clean track title by removing file extensions and common upload clutter.
- */
+
+
 export function cleanTrackTitle(rawTitle) {
   if (!rawTitle) return "";
   return rawTitle
-    .replace(/\.[^/.]+$/, "") // Remove file extensions
-    .replace(/\[\s*(official|music|video|audio|lyric|hd|4k)\s*.*?\]/gi, "") // Remove bracket clutter
+    .replace(/\.[^/.]+$/, "") 
+    .replace(/\[\s*(official|music|video|audio|lyric|hd|4k)\s*.*?\]/gi, "") 
     .replace(/\(\s*(official|music|video|audio|lyric|hd|4k)\s*.*?\)/gi, "")
     .replace(/[-_]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-/**
- * Searches iTunes API for track metadata matching the audio query.
- */
 export async function matchItunesMetadata(rawQuery) {
   const cleanedQuery = cleanTrackTitle(rawQuery);
   if (!cleanedQuery) return null;

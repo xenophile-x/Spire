@@ -1,9 +1,15 @@
-// src/context/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { setDriveAccessToken, clearDriveAccessToken, getDriveAccessToken } from "@/utils/auth";
+import {
+  setDriveAccessToken,
+  clearDriveAccessToken,
+  getDriveAccessToken,
+  getDriveTokenTimestamp,
+} from "@/utils/auth";
 
 const AuthContext = createContext({});
+
+const TOKEN_MAX_AGE_MS = 50 * 60 * 1000; // treat as stale after 50 min
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -11,9 +17,37 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [driveToken, setDriveToken] = useState(getDriveAccessToken());
 
+  // Saves the Google tokens returned at login into your Supabase table,
+  // via a REST insert/upsert (RLS lets the user write their own row).
+  const persistGoogleTokens = async (session) => {
+    if (!session?.provider_token || !session?.user?.id) return;
+
+    const expiresAt = new Date(Date.now() + 55 * 60 * 1000).toISOString(); // Google default ~1hr
+
+    const payload = {
+      user_id: session.user.id,
+      access_token: session.provider_token,
+      expires_at: expiresAt,
+    };
+
+    // Only include refresh_token if Google actually gave us one
+    // (it's only sent on first consent, with access_type: "offline")
+    if (session.provider_refresh_token) {
+      payload.refresh_token = session.provider_refresh_token;
+    }
+
+    const { error } = await supabase
+      .from("google_oauth_tokens")
+      .upsert(payload, { onConflict: "user_id" });
+
+    if (error) {
+      console.error("[Auth] Failed to persist Google tokens:", error);
+    }
+  };
+
   useEffect(() => {
-    // 1. Get initial session
-    supabase.auth.getSession()
+    supabase.auth
+      .getSession()
       .then(({ data: { session } }) => {
         setSession(session);
         setUser(session?.user ?? null);
@@ -21,6 +55,7 @@ export const AuthProvider = ({ children }) => {
         if (session?.provider_token) {
           setDriveAccessToken(session.provider_token);
           setDriveToken(session.provider_token);
+          persistGoogleTokens(session);
         }
         setLoading(false);
       })
@@ -29,14 +64,16 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
       });
 
-    // 2. Listen for auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
 
       if (session?.provider_token) {
         setDriveAccessToken(session.provider_token);
         setDriveToken(session.provider_token);
+        persistGoogleTokens(session);
       } else if (event === "SIGNED_OUT") {
         clearDriveAccessToken();
         setDriveToken(null);
@@ -46,27 +83,26 @@ export const AuthProvider = ({ children }) => {
     });
 
     return () => {
-      listener?.subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, []);
 
-  /**
-   * Triggers Google Login requesting Google Drive file access scopes.
-   */
   const signInWithGoogle = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         scopes: "https://www.googleapis.com/auth/drive.file",
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
         redirectTo: window.location.origin,
       },
     });
+
     if (error) console.error("Error logging in with Google:", error.message);
   };
 
-  /**
-   * Sign out user and purge stored OAuth credentials.
-   */
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
@@ -78,24 +114,43 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  /**
-   * Refreshes the Supabase session and updates the stored Google access token.
-   * Use this when Drive API calls fail with 401.
-   */
+  const isTokenStale = () => {
+    const issuedAt = getDriveTokenTimestamp();
+    if (!issuedAt) return true;
+    return Date.now() - issuedAt > TOKEN_MAX_AGE_MS;
+  };
+
+  // Calls the Edge Function, which uses the stored refresh_token
+  // server-side to get a genuinely new Google access_token.
   const refreshGoogleToken = async () => {
-    const { data, error } = await supabase.auth.refreshSession();
-    if (error) {
-      console.error("Failed to refresh session:", error);
+    try {
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
+
+      if (!currentSession?.access_token) {
+        console.warn("[Auth] No active Supabase session to authorize refresh call.");
+        return null;
+      }
+
+      const { data, error } = await supabase.functions.invoke("refresh-google-token", {
+        headers: {
+          Authorization: `Bearer ${currentSession.access_token}`,
+        },
+      });
+
+      if (error || !data?.access_token) {
+        console.warn("[Auth] Google token refresh failed:", error?.message || data?.error);
+        return null;
+      }
+
+      setDriveAccessToken(data.access_token);
+      setDriveToken(data.access_token);
+      return data.access_token;
+    } catch (err) {
+      console.error("[Auth] refreshGoogleToken threw:", err);
       return null;
     }
-
-    const newToken = data.session?.provider_token;
-    if (newToken) {
-      setDriveAccessToken(newToken);
-      setDriveToken(newToken);
-    }
-
-    return newToken;
   };
 
   return (
@@ -108,6 +163,7 @@ export const AuthProvider = ({ children }) => {
         signInWithGoogle,
         signOut,
         refreshGoogleToken,
+        isTokenStale,
       }}
     >
       {children}
@@ -115,4 +171,5 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
+// eslint-disable-next-line react/only-export-components
 export const useAuth = () => useContext(AuthContext);

@@ -1,4 +1,5 @@
-// src/views/ExploreView.jsx
+
+
 import React, { useEffect, useState, useRef } from "react";
 import TrackCard from "@/components/TrackCard";
 import { getRecommendedTracks } from "@/utils/recommend";
@@ -9,6 +10,9 @@ export default function ExploreView({
   onPlayTrack,
   currentTrack,
   continueListening = [],
+  playlists = [],
+  onAddToPlaylist,
+  listeningHistory = [],
 }) {
   const [recommendedTracks, setRecommendedTracks] = useState([]);
 
@@ -17,19 +21,17 @@ export default function ExploreView({
 
   useEffect(() => {
     const playedIds = new Set(continueListening.map((t) => t.id));
-    // Recommendations exclude the currently playing track and anything
-    // already shown in "Continue Listening" to avoid duplication.
+
     const pool = userTracks.filter(
       (t) => t.id !== currentTrack?.id && !playedIds.has(t.id)
     );
 
-    const baseTrack = currentTrack || pool[0];
-    let recommendations = getRecommendedTracks(baseTrack, pool, 10);
+    let recommendations = getRecommendedTracks(currentTrack, pool, listeningHistory, 10);
     if (recommendations.length === 0) {
       recommendations = pool.slice(0, 10);
     }
     setRecommendedTracks(recommendations);
-  }, [userTracks, currentTrack, continueListening]);
+  }, [userTracks, currentTrack, continueListening, listeningHistory]);
 
   const scroll = (ref, direction) => {
     if (ref.current) {
@@ -98,6 +100,8 @@ export default function ExploreView({
                   track={track}
                   onPlayTrack={onPlayTrack}
                   widthClass="w-40 sm:w-48"
+                  playlists={playlists}
+                  onAddToPlaylist={onAddToPlaylist}
                 />
               ))}
             </div>
@@ -120,12 +124,14 @@ export default function ExploreView({
                 ref={continueScrollRef}
                 className="no-scrollbar flex w-full min-w-0 flex-nowrap gap-5 overflow-x-auto scroll-smooth pt-1 pb-2"
               >
-                {continueListening.slice(0, 8).map((track) => (
+                {continueListening.slice(0, 8).map((track, index) => (
                   <TrackCard
-                    key={`continue-${track.id}`}
+                    key={`continue-${track.id}-${index}`}
                     track={track}
                     onPlayTrack={onPlayTrack}
                     widthClass="w-40 sm:w-48"
+                    playlists={playlists}
+                    onAddToPlaylist={onAddToPlaylist}
                   />
                 ))}
               </div>
@@ -136,3 +142,4 @@ export default function ExploreView({
     </div>
   );
 }
+

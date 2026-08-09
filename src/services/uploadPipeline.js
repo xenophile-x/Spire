@@ -3,7 +3,6 @@ import { registerTrackInSupabase } from "./supabaseService";
 import { matchItunesMetadata, cleanTrackTitle } from "./itunesService";
 import { fetchLyrics } from "./lyricsService";
 
-// Utility to calculate real duration from the uploaded audio file
 function getAudioFileDuration(file) {
   return new Promise((resolve) => {
     try {
@@ -27,19 +26,25 @@ function getAudioFileDuration(file) {
 
 export async function processAudioUpload(file, user, accessToken, onProgress) {
   const fileNameStr = String(file?.name || "audio.mp3");
+
   const userIdStr = user?.id ? String(user.id) : null;
+  if (!userIdStr) {
+    throw new Error("User session invalid. Please log in again before uploading.");
+  }
+
   const fallbackImg =
     "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&q=80&w=600";
 
-  // Get real local audio file duration
   const localDurationSeconds = await getAudioFileDuration(file);
 
-  // 1. iTunes Metadata Search
   onProgress?.({ step: 1, percent: 20, message: "Matching iTunes metadata..." });
   const itunesData = await matchItunesMetadata(fileNameStr);
 
   let trackInfo;
+  // NOTE: itunesTrackId is kept only as external reference metadata now —
+  // it is NEVER used as a Supabase primary key. See registerTrackInSupabase.
   let itunesTrackId = null;
+
   if (itunesData) {
     itunesTrackId = itunesData.trackId ? String(itunesData.trackId) : null;
     trackInfo = {
@@ -53,7 +58,6 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
         localDurationSeconds || Math.round(itunesData.trackTimeMillis / 1000),
     };
   } else {
-    // Fallback parsing from filename if iTunes yields no result
     const cleaned = cleanTrackTitle(fileNameStr);
     const parts = cleaned.split("-");
     trackInfo = {
@@ -67,7 +71,6 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
     };
   }
 
-  // 2. Lyrics Lookup
   onProgress?.({ step: 2, percent: 40, message: "Searching for lyrics on LRCLIB..." });
   const lyricsResult = await fetchLyrics({
     title: trackInfo.title,
@@ -82,7 +85,6 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
     isSynced: Boolean(lyricsResult?.isSynced),
   };
 
-  // 3. Save to Google Drive
   onProgress?.({ step: 3, percent: 70, message: "Uploading audio to Google Drive..." });
   let driveFileId = null;
   try {
@@ -92,7 +94,6 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
     throw new Error("Failed to upload audio to Google Drive.");
   }
 
-  // 4. Register Track in Supabase
   onProgress?.({ step: 4, percent: 90, message: "Registering in Supabase library..." });
   let userTrackRecord = null;
   try {
@@ -102,7 +103,7 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
       filename: fileNameStr,
       trackInfo,
       lyricsData,
-      trackId: itunesTrackId,
+      itunesTrackId, // passed through as reference metadata only, NOT as the row PK
     });
   } catch (err) {
     console.error("SUPABASE REGISTRATION ERROR:", err);
@@ -118,14 +119,14 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
     userTrackRecord,
   };
 }
-// Fetches high-resolution album artwork from the iTunes Search API
+
 export async function fetchArtworkFromITunes(title, artist) {
   if (!title) return null;
 
   try {
     const cleanTitle = title.replace(/\(.*?\)|\[.*?\]/g, "").trim();
     const query = encodeURIComponent(`${cleanTitle} ${artist !== "Unknown Artist" ? artist : ""}`);
-    
+
     const response = await fetch(
       `https://itunes.apple.com/search?term=${query}&entity=song&limit=1`
     );
@@ -134,7 +135,6 @@ export async function fetchArtworkFromITunes(title, artist) {
 
     const data = await response.json();
     if (data.results && data.results.length > 0) {
-      // Upgrade 100x100 resolution URL to high-res 600x600 artwork
       const rawArtwork = data.results[0].artworkUrl100;
       return rawArtwork ? rawArtwork.replace("100x100bb", "600x600bb") : null;
     }

@@ -10,16 +10,15 @@ const navItems = [
 ];
 
 export default function FloatingBar({ activeTab: controlledActiveTab, onSelectTab }) {
-  // Internal state fallback if no parent state is passed
+
   const [internalActiveTab, setInternalActiveTab] = useState('home');
 
-  // Use parent state if provided, otherwise fallback to internal state
   const activeTab = controlledActiveTab !== undefined ? controlledActiveTab : internalActiveTab;
 
   const handleSelect = (id) => {
-    setInternalActiveTab(id); // Updates internal state
+    setInternalActiveTab(id); 
     if (onSelectTab) {
-      onSelectTab(id); // Triggers parent handler if supplied
+      onSelectTab(id); 
     }
   };
 
@@ -48,7 +47,7 @@ export default function FloatingBar({ activeTab: controlledActiveTab, onSelectTa
                 style={{
                   fontVariationSettings:
                      "'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24" 
-                    
+
                 }}
               >
                 {item.icon}

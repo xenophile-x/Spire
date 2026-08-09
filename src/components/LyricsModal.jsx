@@ -1,4 +1,5 @@
-// src/components/LyricsModal.jsx
+
+
 import React, { useEffect, useRef, useState } from "react";
 import { parseLRC, getActiveLyricIndex } from "@/utils/lyricsParser";
 import { GlassCard } from "@/components/ui/glasscn/glass-card";
@@ -97,3 +98,4 @@ export default function LyricsModal({
     </div>
   );
 }
+

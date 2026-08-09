@@ -12,11 +12,14 @@ function GlassButton({
 }) {
   if (glassVariant === "liquid-refract") {
     return (
-      <LiquidGlass className={className}>
+      <LiquidGlass>
         <Button
           data-slot="glass-button"
           data-glass-variant={glassVariant}
-          className="text-foreground cursor-pointer bg-transparent border-0 shadow-none w-full h-full"
+          className={cn(
+            "text-foreground cursor-pointer bg-transparent border-0 shadow-none",
+            className
+          )}
           {...props} />
       </LiquidGlass>
     );

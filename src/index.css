@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
@@ -139,8 +139,6 @@
     @apply font-sans;
     }
 }
-/* src/index.css */
-@import "tailwindcss";
 
 html,
 body,
@@ -149,22 +147,22 @@ body,
   height: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden; /* Prevents global page scrollbars */
-  overscroll-behavior: none; /* Disables website pull/bounce effect on trackpads & mobile */
+  overflow: hidden;
+  overscroll-behavior: none;
   touch-action: pan-x pan-y;
 }
-/* Hide scrollbar for Chrome, Safari, and Opera */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
 
-/* Hide scrollbar for IE, Edge, and Firefox */
-.no-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
-}
-
-/* Custom Glassmorphic Scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -185,8 +183,9 @@ body,
 }
 
 @utility glance {
-    position: relative;
-    overflow: hidden;
+  position: relative;
+  overflow: hidden;
+
   &::after {
     content: "";
     pointer-events: none;
@@ -195,29 +194,26 @@ body,
     z-index: 10;
     transform: translateX(-100%);
     background: linear-gradient(var(--glance-angle, 120deg), transparent 40%, color-mix(in oklab, var(--glance-color, white) calc(var(--glance-opacity, 10%) * 0.6), transparent) 48%, color-mix(in oklab, var(--glance-color, white) var(--glance-opacity, 10%), transparent) 50%, color-mix(in oklab, var(--glance-color, white) calc(var(--glance-opacity, 10%) * 0.6), transparent) 52%, transparent 60%);
-    }
+  }
+
   &:hover::after {
     transform: translateX(100%);
     transition: transform var(--glance-duration, 700ms) ease-out;
-    }
-  @media (prefers-reduced-motion: reduce) {}
-  @media (prefers-reduced-motion::after: reduce) {
-    display: none;
-    }
+  }
 }
 
 @utility glance-color-* {
-    --glance-color: --value(--color-*, [color]);
+  --glance-color: --value(--color-*, [color]);
 }
 
 @utility glance-opacity-* {
-    --glance-opacity: calc(--value(number) * 1%);
+  --glance-opacity: calc(--value(number) * 1%);
 }
 
 @utility glance-duration-* {
-    --glance-duration: calc(--value(number) * 1ms);
+  --glance-duration: calc(--value(number) * 1ms);
 }
 
 @utility glance-angle-* {
-    --glance-angle: calc(--value(number) * 1deg);
+  --glance-angle: calc(--value(number) * 1deg);
 }

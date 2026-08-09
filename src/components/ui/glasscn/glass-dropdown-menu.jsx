@@ -27,7 +27,7 @@ const menuStateStyles = [
 function GlassDropdownMenuContent({
   className,
   glassClassName,
-  glassVariant = "liquid-refract",
+  glassVariant = "frosted",
   showBackdrop = false,
   align = "start",
   alignOffset = 0,

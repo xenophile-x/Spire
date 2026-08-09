@@ -30,7 +30,7 @@ export default function FloatingBar() {
             return (
               <div key={item.id} className="relative group">
                 {isActive ? (
-                  /* Active: full LiquidGlass bubble with bright rim */
+
                   <LiquidGlass
                     blur={8}
                     refraction={12}
@@ -84,3 +84,4 @@ export default function FloatingBar() {
     </aside>
   );
 }
+

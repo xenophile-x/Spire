@@ -1,6 +1,5 @@
 import { getStoredToken } from './auth';
 
-// 1. Base API Fetch Helper
 export const fetchDriveApi = async (endpoint, options = {}) => {
   const token = getStoredToken();
   if (!token) {
@@ -26,13 +25,11 @@ export const fetchDriveApi = async (endpoint, options = {}) => {
   return response;
 };
 
-// 2. Find or Create Application Folder in Google Drive
 export const getOrCreateSpireFolder = async (folderName = 'SPIRE') => {
   const query = encodeURIComponent(
     `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`
   );
 
-  // Check if folder exists
   const searchResponse = await fetchDriveApi(`/drive/v3/files?q=${query}&fields=files(id,name)`);
   if (!searchResponse.ok) {
     throw new Error('Failed to query Google Drive folders.');
@@ -40,10 +37,9 @@ export const getOrCreateSpireFolder = async (folderName = 'SPIRE') => {
 
   const searchData = await searchResponse.json();
   if (searchData.files && searchData.files.length > 0) {
-    return searchData.files[0].id; // Return existing folder ID
+    return searchData.files[0].id; 
   }
 
-  // Folder doesn't exist -> Create it
   const createResponse = await fetchDriveApi('/drive/v3/files', {
     method: 'POST',
     headers: {
@@ -62,7 +58,7 @@ export const getOrCreateSpireFolder = async (folderName = 'SPIRE') => {
   const newFolder = await createResponse.json();
   return newFolder.id;
 };
-// Fetch audio file content as a secure Blob URL for the audio player
+
 export const fetchAudioBlobUrl = async (fileId) => {
   const response = await fetchDriveApi(`/drive/v3/files/${fileId}?alt=media`);
   if (!response.ok) {

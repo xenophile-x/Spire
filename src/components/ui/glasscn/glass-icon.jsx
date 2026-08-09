@@ -1,4 +1,6 @@
-"use client";;
+"use client";
+
+import { forwardRef } from "react";
 import { cva } from "class-variance-authority";
 
 import { glassVariantStyles } from "@/lib/glass-variants";
@@ -23,34 +25,33 @@ const glassIconVariants = cva(
   }
 );
 
-/**
- * A circular glass chip that wraps any icon, iOS-control-center style.
- * The `size` prop drives both the circle and the icon together, so the
- * icon should never set its own size classes.
- *
- * Consumers should pass `aria-label` when the icon is the only content,
- * since GlassIcon renders a plain icon-only button.
- */
-function GlassIcon({
-  className,
-  glassVariant = "liquid-refract",
-  size = "md",
-  liquidProps,
-  surfaceClassName,
-  ...props
-}) {
+const GlassIcon = forwardRef(function GlassIcon(
+  {
+    className,
+    glassVariant = "liquid-refract",
+    size = "md",
+    liquidProps,
+    surfaceClassName,
+    asChild,
+    ...domProps
+  },
+  ref
+) {
   if (glassVariant === "liquid-refract") {
     return (
       <LiquidGlass
         {...liquidProps}
         className={cn(
-          "w-fit rounded-full transition-transform duration-150 active:scale-95 motion-reduce:transition-none transform-gpu",
+          "w-fit rounded-full transition-transform duration-150 active:scale-95 motion-reduce:transition-none",
           "[--liquid-glass-rim-light:rgba(255,255,255,0.55)] [--liquid-glass-rim-width:1.5px] [--liquid-glass-rim-fade:8%]",
           surfaceClassName,
           liquidProps?.className
-        )}>
-        <button
-          type="button"
+        )}
+      >
+        <div
+          ref={ref}
+          role="button"
+          tabIndex={0}
           data-slot="glass-icon"
           data-glass-variant={glassVariant}
           className={cn(
@@ -58,24 +59,28 @@ function GlassIcon({
             "border-0 bg-transparent shadow-none",
             className
           )}
-          {...props} />
+          {...domProps}
+        />
       </LiquidGlass>
     );
   }
 
   return (
-    <button
-      type="button"
+    <div
+      ref={ref}
+      role="button"
+      tabIndex={0}
       data-slot="glass-icon"
       data-glass-variant={glassVariant}
       className={cn(
         glassIconVariants({ size }),
         glassVariantStyles[glassVariant],
-        "transition-transform duration-150 active:scale-95 motion-reduce:transition-none transform-gpu",
+        "transition-transform duration-150 active:scale-95 motion-reduce:transition-none",
         className
       )}
-      {...props} />
+      {...domProps}
+    />
   );
-}
+});
 
 export { GlassIcon, glassIconVariants };

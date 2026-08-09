@@ -19,7 +19,7 @@ export default function GlassSearchBar({
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (searchRef.current && !searchRef.current.contains(e.target)) {
-        // do nothing special on outside click
+
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -43,12 +43,12 @@ export default function GlassSearchBar({
   };
 
   return (
-    <header className="w-full max-w-2xl mx-auto p-4 select-none font-sans relative" ref={searchRef}>
+    <header className="w-full max-w-2xl mx-auto p-1 select-none font-sans relative" ref={searchRef}>
       <LiquidGlass
         blur={12}
-        refraction={20}
-        saturation={1.4}
-        className="flex h-16 items-center justify-between gap-3 rounded-full px-4 shadow-xl border border-white/5 [--liquid-glass-rim-light:rgba(255,255,255,0.6)] [--liquid-glass-rim-width:1px]"
+        refraction={14}
+        saturation={1.45}
+        className="flex h-16 items-center justify-between gap-3 rounded-full px-4 border border-white/20 [--liquid-glass-rim-light:rgba(255,255,255,0.6)] [--liquid-glass-rim-width:1px]"
       >
         <div className="flex items-center gap-2.5 shrink-0">
           <GlassIcon
@@ -57,7 +57,7 @@ export default function GlassSearchBar({
             disabled={!canGoBack}
             aria-label="Go back"
             className={cn(
-              "text-white/60 rounded-full flex items-center justify-center p-0 h-10 w-10 border border-white/5 hover:border-white/10 active:scale-95 transition-all",
+              "text-white rounded-full flex items-center justify-center p-0 h-10 w-10 border border-white/10 hover:border-white/20 active:scale-95 transition-all",
               !canGoBack && "opacity-30 cursor-not-allowed border-none"
             )}
             liquidProps={{ blur: 2, refraction: 2, saturation: 1 }}
@@ -71,7 +71,7 @@ export default function GlassSearchBar({
             disabled={!canGoForward}
             aria-label="Go forward"
             className={cn(
-              "text-white/60 rounded-full flex items-center justify-center p-0 h-10 w-10 border border-white/5 hover:border-white/10 active:scale-95 transition-all",
+              "text-white rounded-full flex items-center justify-center p-0 h-10 w-10 border border-white/10 hover:border-white/20 active:scale-95 transition-all",
               !canGoForward && "opacity-30 cursor-not-allowed border-none"
             )}
             liquidProps={{ blur: 2, refraction: 2, saturation: 1 }}
@@ -84,10 +84,10 @@ export default function GlassSearchBar({
           refraction={6}
           saturation={1.2}
           variant="liquid"
-          className="relative flex h-10 max-w-lg flex-1 items-center justify-between overflow-hidden rounded-full px-3.5 border border-white/5 shadow-inner [--liquid-glass-rim-width:0.5px]"
+          className="relative flex h-10 max-w-lg flex-1 items-center justify-between overflow-hidden rounded-full px-3.5 border border-white/10 shadow-inner [--liquid-glass-rim-width:0.5px]"
         >
           <div className="flex w-full items-center gap-2">
-            <span className="material-symbols-rounded shrink-0 text-sm text-white/40">
+            <span className="material-symbols-rounded shrink-0 text-sm text-white/30">
               search
             </span>
 
@@ -95,7 +95,7 @@ export default function GlassSearchBar({
               type="text"
               value={query}
               onChange={handleChange}
-              className="w-full bg-transparent text-sm font-medium tracking-wide text-white/90 placeholder-white70 focus:outline-none border-0 shadow-none focus-visible:ring-0 p-0"
+              className="w-full bg-transparent text-sm font-medium tracking-wide text-white placeholder-white/50 focus:outline-none border-0 shadow-none focus-visible:ring-0 p-0"
               placeholder="Search by title, artist..."
             />
           </div>
@@ -104,7 +104,7 @@ export default function GlassSearchBar({
             <button
               type="button"
               onClick={handleClear}
-              className="shrink-0 cursor-pointer rounded-full p-1 text-white/30 transition-all hover:bg-white/20 hover:text-white ml-2 flex items-center justify-center"
+              className="shrink-0 cursor-pointer rounded-full p-1 text-white/30 transition-all hover:bg-white/10 hover:text-white ml-2 flex items-center justify-center"
             >
               <span className="material-symbols-rounded block text-sm leading-none">close</span>
             </button>
@@ -115,7 +115,7 @@ export default function GlassSearchBar({
           size="sm"
           onClick={onThemeToggle}
           aria-label="Toggle theme"
-          className="shrink-0 text-white/60  flex items-center justify-center p-0 h-10 w-10 border border-white/5 hover:border-white/10 active:scale-95 transition-all"
+          className="shrink-0 text-white rounded-full flex items-center justify-center p-0 h-10 w-10 border border-white/10 hover:border-white/20 active:scale-95 transition-all"
           liquidProps={{ blur: 2, refraction: 2, saturation: 1 }}
         >
           <span className="material-symbols-rounded text-lg leading-none">light_mode</span>
@@ -124,3 +124,4 @@ export default function GlassSearchBar({
     </header>
   );
 }
+

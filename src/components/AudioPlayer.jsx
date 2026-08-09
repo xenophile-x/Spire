@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from "react";
 
-// Helper to parse standard LRC string into timestamped lines
 export function parseLRC(lrcString) {
   if (!lrcString || typeof lrcString !== "string") return [];
   const lines = lrcString.split("\n");
@@ -24,6 +23,14 @@ export function parseLRC(lrcString) {
   return result.sort((a, b) => a.time - b.time);
 }
 
+async function fetchDriveAudio(driveId, token) {
+  const response = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return response;
+}
+
 export default function AudioPlayer({
   activeTrack,
   googleAccessToken,
@@ -34,16 +41,10 @@ export default function AudioPlayer({
   onDurationChange,
   onEnded,
   onLyricsParsed,
-  onRefreshToken,
+  onRefreshToken, // now actually used
 }) {
   const audioRef = useRef(null);
-  const isPlayingRef = useRef(isPlaying);
 
-  useEffect(() => {
-    isPlayingRef.current = isPlaying;
-  }, [isPlaying]);
-
-  // 1. Fetch Google Drive file & generate Blob URL safely
   useEffect(() => {
     let isMounted = true;
     let currentBlobUrl = null;
@@ -51,46 +52,30 @@ export default function AudioPlayer({
     async function loadAudioSource() {
       if (!audioRef.current || !activeTrack) return;
 
-      // Unify property name check for camelCase or snake_case
       const driveId =
         activeTrack.driveFileId ||
         activeTrack.drive_file_id ||
         activeTrack.drive_id;
 
-        let audioUrl = activeTrack.url || activeTrack.src;
+      let audioUrl = activeTrack.url || activeTrack.src;
 
-        // Fetch from Google Drive API with OAuth token if drive ID is present
-        if (!audioUrl && driveId) {
-          if (!googleAccessToken) {
-            console.error("Google Access Token missing. Cannot play track from Drive.");
-            return;
-          }
+      if (!audioUrl && driveId) {
+        if (!googleAccessToken) {
+          console.error("[AudioPlayer] Google Access Token missing. Cannot play track from Drive.");
+          return;
+        }
 
-          let token = googleAccessToken;
-          let response = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          );
+        try {
+          let response = await fetchDriveAudio(driveId, googleAccessToken);
 
-          console.log("[AudioPlayer] Drive fetch status:", response.status, response.statusText);
-
-          if (response.status === 401 && onRefreshToken) {
-            const newToken = await onRefreshToken();
-            if (newToken) {
-              token = newToken;
-              response = await fetch(
-                `https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`,
-                {
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                  },
-                }
-              );
-              console.log("[AudioPlayer] Retry after token refresh status:", response.status, response.statusText);
+          // Token expired — refresh once and retry automatically
+          if (response.status === 401) {
+            console.warn("[AudioPlayer] Token expired (401). Attempting refresh...");
+            if (typeof onRefreshToken === "function") {
+              const freshToken = await onRefreshToken();
+              if (freshToken) {
+                response = await fetchDriveAudio(driveId, freshToken);
+              }
             }
           }
 
@@ -98,29 +83,30 @@ export default function AudioPlayer({
             throw new Error(`Drive fetch error: ${response.status} ${response.statusText}`);
           }
 
-          try {
-            const rawBlob = await response.blob();
-            const contentType = response.headers.get("content-type");
-            console.log("[AudioPlayer] Drive response OK, blob size:", rawBlob.size, "type:", rawBlob.type, "content-type:", contentType);
-            const mimeType = contentType || rawBlob.type || "audio/mpeg";
-            const audioBlob = new Blob([rawBlob], { type: mimeType });
-            console.log("[AudioPlayer] Created audioBlob size:", audioBlob.size, "type:", audioBlob.type);
-            currentBlobUrl = URL.createObjectURL(audioBlob);
-            audioUrl = currentBlobUrl;
-          } catch (err) {
-            console.error("Failed to read audio file from Google Drive:", err);
-            return;
-          }
+          const rawBlob = await response.blob();
+          const mimeType =
+            rawBlob.type && rawBlob.type !== "application/octet-stream"
+              ? rawBlob.type
+              : "audio/mpeg";
+          const audioBlob =
+            rawBlob.type === mimeType ? rawBlob : new Blob([rawBlob], { type: mimeType });
+
+          currentBlobUrl = URL.createObjectURL(audioBlob);
+          audioUrl = currentBlobUrl;
+        } catch (err) {
+          console.error("[AudioPlayer] Failed to read audio file from Google Drive:", err);
+          return;
         }
+      }
 
       if (audioUrl && isMounted) {
         audioRef.current.src = audioUrl;
         audioRef.current.load();
 
-        if (isPlayingRef.current) {
+        if (isPlaying) {
           audioRef.current.play().catch((err) => {
             if (err.name !== "AbortError") {
-              console.error("Playback start error:", err);
+              console.error("[AudioPlayer] Playback start error:", err);
             }
           });
         }
@@ -132,7 +118,7 @@ export default function AudioPlayer({
     return () => {
       isMounted = false;
       if (currentBlobUrl) {
-        URL.revokeObjectURL(currentBlobUrl); // Cleanup memory
+        URL.revokeObjectURL(currentBlobUrl);
       }
     };
   }, [
@@ -142,7 +128,6 @@ export default function AudioPlayer({
     googleAccessToken,
   ]);
 
-  // 2. Play / Pause Control — re-run when track loads so playback starts after src is ready
   useEffect(() => {
     if (!audioRef.current || !audioRef.current.src) return;
 
@@ -151,23 +136,21 @@ export default function AudioPlayer({
       if (playPromise !== undefined) {
         playPromise.catch((err) => {
           if (err.name !== "AbortError") {
-            console.error("Play error:", err);
+            console.error("[AudioPlayer] Play error:", err);
           }
         });
       }
     } else {
       audioRef.current.pause();
     }
-  }, [isPlaying, activeTrack?.id]);
+  }, [isPlaying]);
 
-  // 3. Volume Control
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = volume / 100;
     }
   }, [volume]);
 
-  // 4. Time Seeking
   useEffect(() => {
     if (
       audioRef.current &&
@@ -179,7 +162,6 @@ export default function AudioPlayer({
     }
   }, [seekTime]);
 
-  // 5. Sync & Parse Lyrics
   useEffect(() => {
     const rawLyrics =
       activeTrack?.synced_lyrics ||
@@ -205,14 +187,10 @@ export default function AudioPlayer({
       }}
       onLoadedMetadata={() => {
         if (audioRef.current && onDurationChange) {
-          console.log("[AudioPlayer] Audio loaded, duration:", audioRef.current.duration);
           onDurationChange(audioRef.current.duration);
         }
       }}
       onEnded={onEnded}
-      onError={(e) => {
-        console.error("[AudioPlayer] Audio element error:", e);
-      }}
       preload="auto"
       className="hidden"
     />

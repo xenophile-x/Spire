@@ -1,74 +1,28 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 export function useAudioPlayer() {
-  const audioRef = useRef(new Audio());
+  const audioRef = useRef(null);
 
-  // State
-  const [currentTrack, setCurrentTrack] = useState(null); // Full track object
+  if (!audioRef.current) {
+    audioRef.current = new Audio();
+    audioRef.current.crossOrigin = 'anonymous';
+  }
+
+  const [currentTrack, setCurrentTrack] = useState(null); 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1); // 0.0 to 1.0
+  const [volume, setVolume] = useState(1); 
   const [error, setError] = useState(null);
 
-  // Active Blob URL cleanup reference
-  const currentBlobUrlRef = useRef(null);
-
-  // Clean up object URL when switching tracks or unmounting
-  const cleanupBlobUrl = useCallback(() => {
-    if (currentBlobUrlRef.current) {
-      URL.revokeObjectURL(currentBlobUrlRef.current);
-      currentBlobUrlRef.current = null;
-    }
+  const buildDriveAudioUrl = useCallback((driveFileId, accessToken) => {
+    if (!driveFileId) return null;
+    const token = accessToken || localStorage.getItem('google_drive_access_token');
+    if (!token) return null;
+    return `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media&access_token=${encodeURIComponent(token)}`;
   }, []);
 
-  /**
-   * Fetches the Google Drive file binary using the access token
-   * and creates a local Blob Object URL for streaming playback.
-   */
-  const fetchDriveAudioBlobUrl = async (driveFileId, refreshToken) => {
-    let token = localStorage.getItem('google_drive_access_token');
-    if (!token) {
-      throw new Error('Google Drive access token missing.');
-    }
-
-    let response = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (response.status === 401 && refreshToken) {
-      const newToken = await refreshToken();
-      if (newToken) {
-        token = newToken;
-        response = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-      }
-    }
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch audio stream (${response.status})`);
-    }
-
-    const blob = await response.blob();
-    return URL.createObjectURL(blob);
-  };
-
-  /**
-   * Main method to play a track from a user_tracks database item
-   * @param {Object} trackData - Combined object with track details & drive_file_id
-   */
   const playTrack = useCallback(async (trackData) => {
     const audio = audioRef.current;
 
@@ -77,17 +31,17 @@ export function useAudioPlayer() {
       setError(null);
       setIsPlaying(false);
 
-      // Stop current playback & cleanup previous blob URL
       audio.pause();
-      cleanupBlobUrl();
 
       setCurrentTrack(trackData);
 
-      // Fetch file as blob from Google Drive REST API
-      const blobUrl = await fetchDriveAudioBlobUrl(trackData.drive_file_id);
-      currentBlobUrlRef.current = blobUrl;
+      const audioUrl = trackData.url || trackData.src || buildDriveAudioUrl(trackData.drive_file_id);
 
-      audio.src = blobUrl;
+      if (!audioUrl) {
+        throw new Error('No audio source available for this track.');
+      }
+
+      audio.src = audioUrl;
       audio.load();
 
       await audio.play();
@@ -99,9 +53,8 @@ export function useAudioPlayer() {
     } finally {
       setIsLoading(false);
     }
-  }, [cleanupBlobUrl]);
+  }, [buildDriveAudioUrl]);
 
-  // Controls
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (!audio.src) return;
@@ -129,7 +82,6 @@ export function useAudioPlayer() {
     setVolume(clamped);
   }, []);
 
-  // Sync HTML5 Audio element events with React state
   useEffect(() => {
     const audio = audioRef.current;
 
@@ -155,14 +107,12 @@ export function useAudioPlayer() {
     };
   }, []);
 
-  // Cleanup on component unmount
   useEffect(() => {
+    const audio = audioRef.current;
     return () => {
-      const audio = audioRef.current;
       audio.pause();
-      cleanupBlobUrl();
     };
-  }, [cleanupBlobUrl]);
+  }, []);
 
   return {
     currentTrack,
@@ -178,3 +128,4 @@ export function useAudioPlayer() {
     changeVolume,
   };
 }
+

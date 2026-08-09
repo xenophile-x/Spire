@@ -10,6 +10,8 @@ export default function HomeView({
   onFileUpload,
   onPlayTrack,
   searchQuery = "",
+  playlists = [],
+  onAddToPlaylist,
 }) {
   const scrollContainerRef = useRef(null);
 
@@ -36,7 +38,7 @@ export default function HomeView({
   const hasSearch = searchTerm.length > 0;
 
   return (
-    <div className="w-full min-w-0 space-y-8">
+    <div className="w-full max-w-5xl mx-auto space-y-8 pb-12">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Home</h1>
@@ -79,6 +81,8 @@ export default function HomeView({
                   key={`search-${track.id}`}
                   track={track}
                   onPlayTrack={onPlayTrack}
+                  playlists={playlists}
+                  onAddToPlaylist={onAddToPlaylist}
                 />
               ))}
             </div>
@@ -121,6 +125,8 @@ export default function HomeView({
                   track={track}
                   onPlayTrack={onPlayTrack}
                   widthClass="w-40 sm:w-48"
+                  playlists={playlists}
+                  onAddToPlaylist={onAddToPlaylist}
                 />
               ))}
             </div>
@@ -131,12 +137,14 @@ export default function HomeView({
 
           <div className="w-full space-y-3 pt-4">
             <h2 className="text-lg font-bold text-white">All Songs</h2>
-            <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {userTracks.map((track) => (
                 <TrackCard
                   key={`grid-${track.id}`}
                   track={track}
                   onPlayTrack={onPlayTrack}
+                  playlists={playlists}
+                  onAddToPlaylist={onAddToPlaylist}
                 />
               ))}
             </div>

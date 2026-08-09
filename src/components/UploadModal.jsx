@@ -1,4 +1,5 @@
-// src/components/UploadModal.jsx
+
+
 import React, { useEffect } from "react";
 import "material-symbols/rounded.css";
 import { GlassCard } from "@/components/ui/glasscn/glass-card";
@@ -144,3 +145,4 @@ export default function UploadModal({
     </div>
   );
 }
+

@@ -3,14 +3,16 @@ import { Routes, Route, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 
-// Components & Services
 import FloatingBar from "@/components/FloatingBar";
 import GlassSearchBar from "@/components/GlassSearchBar";
-import AppleMusicBar from "@/components/AppleMusicBar";
+import MusicBar from "@/components/MusicBar";
 import AudioPlayer from "@/components/AudioPlayer";
 import UploadModal from "@/components/UploadModal";
 import TemperedGlassCard from "@/components/ui/TemperedGlassCard";
 import { GlassButton } from "@/components/ui/glasscn/glass-button";
+
+import Opening from "@/components/Opening";
+import Landing from "@/components/Landing";
 
 import HomeView from "@/views/HomeView";
 import ExploreView from "@/views/ExploreView";
@@ -19,8 +21,22 @@ import ExpandedLyricsView from "@/views/ExpandedLyricsView";
 import SettingsView from "@/views/SettingsView";
 
 import { processAudioUpload, fetchArtworkFromITunes } from "@/services/uploadPipeline";
-import { getUserLibrary, getListeningHistoryTrackIds, recordListen } from "@/services/supabaseService";
+
 import { uploadBackgroundToDrive } from "@/services/driveService";
+
+import {
+  getUserLibrary,
+  getListeningHistoryWithGenres,
+  recordListen,
+  getLikedSongs,
+  toggleLikedSong,
+  getUserPlaylists,
+  addTrackToPlaylist,
+  createPlaylist,
+  renamePlaylist,
+  deletePlaylist,
+  removeTrackFromPlaylist,
+} from "@/services/supabaseService";
 
 const DEFAULT_BG_IMAGE =
   "https://images.unsplash.com/photo-1778789172863-a137613623e0?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D";
@@ -57,99 +73,67 @@ const getBgUrlFromUser = (user, presetIdx, isPreset) => {
 };
 
 function AppContent() {
+  const [likedTrackIds, setLikedTrackIds] = useState(new Set());
+  const [playlists, setPlaylists] = useState([]);
+
   const { user, loading, googleAccessToken, signInWithGoogle, signOut, refreshGoogleToken } = useAuth();
   const navigate = useNavigate();
 
-  // Player state
   const [activeTrack, setActiveTrack] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [seekTime, setSeekTime] = useState(null);
   const [volume, setVolume] = useState(70);
-  const [likedTrackIds, setLikedTrackIds] = useState(() => new Set());
+  const [isShuffle, setIsShuffle] = useState(false);
+  const [isRepeat, setIsRepeat] = useState(false);
   const [activePlaylistId, setActivePlaylistId] = useState(null);
 
-   // Played-track history (ordered track ids, most-recent-first) backing
-  // "Continue Listening" — sourced from the listening_history table.
   const [playedTrackIds, setPlayedTrackIds] = useState([]);
+  const [listeningHistory, setListeningHistory] = useState([]);
 
-  // Views state
   const [isExpandedViewOpen, setIsExpandedViewOpen] = useState(false);
 
-  // Global search query (drives HomeView filtering)
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Playlists state synced with localStorage
-  const [playlists, setPlaylists] = useState(() => {
-    const saved = localStorage.getItem("spire_playlists");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error("Failed to parse playlists:", e);
-      }
-    }
-    return [
-      {
+  // NEW: tracks whether the Google Drive token could not be silently refreshed,
+  // meaning the user needs to reconnect via signInWithGoogle().
+  const [needsReauth, setNeedsReauth] = useState(false);
+
+  const loadUserPreferences = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const [likes, userPlaylists] = await Promise.all([
+        getLikedSongs(user.id),
+        getUserPlaylists(user.id)
+      ]);
+      setLikedTrackIds(likes);
+
+      const favoritePlaylist = {
         id: "1",
         title: "Favorite Songs",
         isFavorite: true,
         isStarIcon: true,
         image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80",
-        songIds: [],
-      },
-      {
-        id: "2",
-        title: "Work",
-        subtitle: " Playlist",
-        isFolder: true,
-        covers: ["https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=200&auto=format&fit=crop&q=80"],
-        songIds: [],
-      },
-      {
-        id: "3",
-        title: "Kids stuff",
-        image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
-        songIds: [],
-      },
-      {
-        id: "4",
-        title: "Olivia's Best",
-        image: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80",
-        songIds: [],
-      },
-      {
-        id: "5",
-        title: "The Best for Work",
-        image: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=400&auto=format&fit=crop&q=80",
-        songIds: [],
-      },
-      {
-        id: "6",
-        title: "Pop Chill",
-        image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&auto=format&fit=crop&q=80",
-        songIds: [],
-      },
-    ];
-  });
+        songIds: Array.from(likes),
+      };
 
-  useEffect(() => {
-    localStorage.setItem("spire_playlists", JSON.stringify(playlists));
-  }, [playlists]);
-
-  useEffect(() => {
-    const favoritePlaylist = playlists.find((pl) => pl.id === "1");
-    if (favoritePlaylist) {
-      setLikedTrackIds(new Set(favoritePlaylist.songIds || []));
+      setPlaylists([favoritePlaylist, ...userPlaylists]);
+    } catch (err) {
+      console.error("Failed to load user preferences:", err);
     }
-  }, [playlists]);
+  }, [user?.id]);
 
-  // Library & History state
+  useEffect(() => {
+    setPlaylists((prev) =>
+      prev.map((pl) =>
+        pl.id === "1" ? { ...pl, songIds: Array.from(likedTrackIds) } : pl
+      )
+    );
+  }, [likedTrackIds]);
+
   const [userTracks, setUserTracks] = useState([]);
 
-  // "Continue Listening": only tracks that have actually been played,
-  // matched against the loaded library so each card carries full metadata.
   const continueListening = useMemo(
     () =>
       playedTrackIds
@@ -158,14 +142,12 @@ function AppContent() {
     [userTracks, playedTrackIds]
   );
 
-  // Upload modal state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadStep, setUploadStep] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
 
-  // Wallpaper state initialized from user metadata
   const customBgDriveId = user?.user_metadata?.bg_drive_id;
   const initialIsPreset = user?.user_metadata?.is_using_preset ?? !customBgDriveId;
   const initialPresetIdx = user?.user_metadata?.wallpaper_index ?? 0;
@@ -175,7 +157,6 @@ function AppContent() {
   const [bgUploading, setBgUploading] = useState(false);
   const [localBgUrl, setLocalBgUrl] = useState(null);
 
-  // Compute active target background URL
   const targetBgUrl = useMemo(() => {
     if (localBgUrl) return localBgUrl;
     if (isUsingPreset) {
@@ -187,7 +168,6 @@ function AppContent() {
     return WALLPAPERS[wallpaperIndex] || DEFAULT_BG_IMAGE;
   }, [isUsingPreset, wallpaperIndex, localBgUrl, customBgDriveId]);
 
-  // Layers for Cross-Fade setup
   const initialBgUrl = getBgUrlFromUser(user, initialPresetIdx, initialIsPreset);
   const [currentBg, setCurrentBg] = useState(initialBgUrl);
   const [prevBg, setPrevBg] = useState(initialBgUrl);
@@ -207,7 +187,7 @@ function AppContent() {
         setPrevBg(loadedUrl);
       }
     }
-  }, [user]);
+  }, [user, localBgUrl]);
 
   useEffect(() => {
     if (targetBgUrl === currentBg) return;
@@ -238,7 +218,7 @@ function AppContent() {
     return () => {
       isMounted = false;
     };
-  }, [targetBgUrl]);
+  }, [targetBgUrl, currentBg]);
 
   const handleThemeToggle = useCallback(async () => {
     const nextIndex = (wallpaperIndex + 1) % WALLPAPERS.length;
@@ -339,6 +319,7 @@ function AppContent() {
           uploadedAt: rec.created_at,
           title,
           artist,
+          genre: meta.primary_genre || meta.primaryGenre || "Unknown",
           cover: coverUrl,
           artworkUrl: coverUrl,
           synced_lyrics: lyricsObj.synced_lyrics || lyricsObj.syncedLyrics || "",
@@ -364,7 +345,9 @@ function AppContent() {
   const loadContinueListening = useCallback(async () => {
     if (!user?.id) return;
     try {
-      setPlayedTrackIds(await getListeningHistoryTrackIds(user.id, 8));
+      const history = await getListeningHistoryWithGenres(user.id, 50);
+      setListeningHistory(history);
+      setPlayedTrackIds(history.map((h) => h.track_id));
     } catch (err) {
       console.error("Failed to load continue listening:", err);
     }
@@ -374,9 +357,10 @@ function AppContent() {
     const load = async () => {
       await loadLibrary();
       await loadContinueListening();
+      await loadUserPreferences();
     };
     load();
-  }, [loadLibrary, loadContinueListening]);
+  }, [loadLibrary, loadContinueListening, loadUserPreferences]);
 
   const handlePlayTrack = useCallback((track, playlistId = null) => {
     setActiveTrack({
@@ -387,17 +371,20 @@ function AppContent() {
       artworkUrl: track.artworkUrl || track.cover,
       synced_lyrics: track.synced_lyrics || track.syncedLyrics || "",
       driveFileId: track.drive_file_id || track.driveFileId,
+      genre: track.genre || track.primary_genre || "Unknown",
     });
     setActivePlaylistId(playlistId);
     setPlayedTrackIds((prev) => {
       const filtered = prev.filter((id) => id !== track.id);
       return [track.id, ...filtered].slice(0, 8);
     });
-    recordListen(track.id, track.primary_genre || null);
+    if (user?.id) {
+      recordListen(user.id, track.id, track.genre || track.primary_genre || "Unknown");
+    }
     setCurrentTime(0);
     setSeekTime(0);
     setIsPlaying(true);
-  }, []);
+  }, [user?.id]);
 
   const handleTogglePlay = useCallback(() => {
     setIsPlaying((prev) => !prev);
@@ -411,9 +398,19 @@ function AppContent() {
   const handleNextTrack = useCallback(() => {
     if (!activeTrack || userTracks.length === 0) return;
     const idx = userTracks.findIndex((t) => t.id === activeTrack.id);
+
+    if (isShuffle && userTracks.length > 1) {
+      let r;
+      do {
+        r = Math.floor(Math.random() * userTracks.length);
+      } while (r === idx);
+      handlePlayTrack(userTracks[r]);
+      return;
+    }
+
     const nextIdx = idx >= 0 ? (idx + 1) % userTracks.length : 0;
     handlePlayTrack(userTracks[nextIdx]);
-  }, [activeTrack, userTracks, handlePlayTrack]);
+  }, [activeTrack, userTracks, isShuffle, handlePlayTrack]);
 
   const handlePreviousTrack = useCallback(() => {
     if (!activeTrack || userTracks.length === 0) return;
@@ -421,6 +418,57 @@ function AppContent() {
     const prevIdx = idx >= 0 ? (idx - 1 + userTracks.length) % userTracks.length : 0;
     handlePlayTrack(userTracks[prevIdx]);
   }, [activeTrack, userTracks, handlePlayTrack]);
+
+  const handleTrackEnded = useCallback(() => {
+    if (isRepeat) {
+      handlePlayTrack(activeTrack);
+      return;
+    }
+    handleNextTrack();
+  }, [isRepeat, activeTrack, handlePlayTrack, handleNextTrack]);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const el = e.target;
+      const tag = el && el.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        (el && el.isContentEditable)
+      ) {
+        return;
+      }
+
+      switch (e.key) {
+        case "k":
+        case "K":
+          e.preventDefault();
+          handleTogglePlay();
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          handleSeek(Math.max(0, Math.min(duration, currentTime - 10)));
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          handleSeek(Math.max(0, Math.min(duration, currentTime + 10)));
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setVolume((v) => Math.min(100, v + 5));
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          setVolume((v) => Math.max(0, v - 5));
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [currentTime, duration, handleTogglePlay, handleSeek, setVolume]);
 
   const handleFileUpload = useCallback(
     async (e) => {
@@ -460,38 +508,170 @@ function AppContent() {
     [googleAccessToken, user, loadLibrary, userTracks]
   );
 
-  const handleAddToPlaylist = useCallback((playlistId, trackId) => {
-    if (!trackId) return;
-    setPlaylists((prev) =>
-      prev.map((pl) => {
-        if (pl.id === playlistId) {
-          const songIds = pl.songIds || [];
-          if (songIds.includes(trackId)) {
-            alert(`Song is already in playlist "${pl.title}"`);
-            return pl;
-          }
-          return { ...pl, songIds: [...songIds, trackId] };
-        }
-        return pl;
-      })
-    );
-  }, []);
+  const toggleLikeTrack = useCallback(
+    async (trackId) => {
+      if (!trackId || !user?.id) return;
+      const wasLiked = likedTrackIds.has(trackId);
 
-  const toggleLikeTrack = useCallback((trackId) => {
-    if (!trackId) return;
-    setPlaylists((prev) =>
-      prev.map((pl) => {
-        if (pl.id === "1") {
-          const songIds = pl.songIds || [];
-          const nextIds = songIds.includes(trackId)
-            ? songIds.filter((id) => id !== trackId)
-            : [...songIds, trackId];
-          return { ...pl, songIds: nextIds };
-        }
-        return pl;
-      })
-    );
-  }, []);
+      setLikedTrackIds((prev) => {
+        const next = new Set(prev);
+        if (wasLiked) next.delete(trackId);
+        else next.add(trackId);
+        return next;
+      });
+
+      try {
+        await toggleLikedSong(user.id, trackId, wasLiked);
+      } catch (err) {
+        console.error("Failed to toggle like:", err);
+        setLikedTrackIds((prev) => {
+          const next = new Set(prev);
+          if (wasLiked) next.add(trackId);
+          else next.delete(trackId);
+          return next;
+        });
+      }
+    },
+    [user?.id, likedTrackIds]
+  );
+
+  const handleAddToPlaylist = useCallback(
+    async (playlistId, trackId) => {
+      if (!trackId) return;
+
+      if (playlistId === "1") {
+        await toggleLikeTrack(trackId);
+        return;
+      }
+
+      let alreadyThere = false;
+      setPlaylists((prev) =>
+        prev.map((pl) => {
+          if (pl.id === playlistId) {
+            const songIds = pl.songIds || [];
+            if (songIds.includes(trackId)) {
+              alreadyThere = true;
+              return pl;
+            }
+            return { ...pl, songIds: [...songIds, trackId] };
+          }
+          return pl;
+        })
+      );
+
+      if (alreadyThere) return;
+
+      try {
+        await addTrackToPlaylist(playlistId, trackId);
+      } catch (err) {
+        console.error("Failed to add to playlist:", err);
+        setPlaylists((prev) =>
+          prev.map((pl) =>
+            pl.id === playlistId
+              ? { ...pl, songIds: (pl.songIds || []).filter((id) => id !== trackId) }
+              : pl
+          )
+        );
+      }
+    },
+    [toggleLikeTrack]
+  );
+
+  const handleCreatePlaylist = useCallback(
+    async (title) => {
+      if (!user?.id || !title.trim()) return;
+      try {
+        const newPlaylist = await createPlaylist(user.id, title.trim());
+        setPlaylists((prev) => [...prev, newPlaylist]);
+      } catch (err) {
+        console.error("Failed to create playlist:", err);
+      }
+    },
+    [user?.id]
+  );
+
+  const handleDeletePlaylist = useCallback(
+    async (playlistId) => {
+      if (playlistId === "1") return;
+      setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
+      try {
+        await deletePlaylist(playlistId);
+      } catch (err) {
+        console.error("Failed to delete playlist:", err);
+        await loadUserPreferences();
+      }
+    },
+    [loadUserPreferences]
+  );
+
+  const handleRenamePlaylist = useCallback(
+    async (playlistId, newTitle) => {
+      if (playlistId === "1") return;
+      const trimmed = (newTitle || "").trim();
+      if (!trimmed) return;
+      setPlaylists((prev) =>
+        prev.map((p) => (p.id === playlistId ? { ...p, title: trimmed } : p))
+      );
+      try {
+        await renamePlaylist(playlistId, trimmed);
+      } catch (err) {
+        console.error("Failed to rename playlist:", err);
+        await loadUserPreferences();
+      }
+    },
+    [loadUserPreferences]
+  );
+
+  const handleRemoveTrackFromPlaylist = useCallback(
+    async (playlistId, trackId) => {
+      if (playlistId === "1") {
+        await toggleLikeTrack(trackId);
+        return;
+      }
+      setPlaylists((prev) =>
+        prev.map((pl) =>
+          pl.id === playlistId
+            ? { ...pl, songIds: (pl.songIds || []).filter((id) => id !== trackId) }
+            : pl
+        )
+      );
+      try {
+        await removeTrackFromPlaylist(playlistId, trackId);
+      } catch (err) {
+        console.error("Failed to remove track from playlist:", err);
+        await loadUserPreferences();
+      }
+    },
+    [toggleLikeTrack, loadUserPreferences]
+  );
+
+  const handlePlaylistPlay = useCallback(
+    (playlistId, track) => {
+      setActivePlaylistId(playlistId);
+      handlePlayTrack(track, playlistId);
+    },
+    [handlePlayTrack]
+  );
+
+  // NEW: wraps refreshGoogleToken so AudioPlayer's retry-on-401 can surface
+  // a clear "reconnect" prompt instead of failing silently when Supabase
+  // cannot produce a genuinely fresh Google provider_token.
+  const handleRefreshToken = useCallback(async () => {
+    const fresh = await refreshGoogleToken();
+    if (!fresh) {
+      setNeedsReauth(true);
+    } else {
+      setNeedsReauth(false);
+    }
+    return fresh;
+  }, [refreshGoogleToken]);
+
+  // NEW: clear the reauth banner once the user reconnects successfully.
+  useEffect(() => {
+    if (googleAccessToken) {
+      setNeedsReauth(false);
+    }
+  }, [googleAccessToken]);
 
   if (!user && !loading) {
     return (
@@ -499,14 +679,19 @@ function AppContent() {
         className="h-screen w-screen bg-cover bg-center bg-no-repeat text-white flex flex-col items-center justify-center p-4 relative"
         style={{ backgroundImage: `url("${DEFAULT_BG_IMAGE}")` }}
       >
-        <div className="absolute inset-0 z-0 bg-black/30" />
-        <TemperedGlassCard className="z-10 w-full max-w-md space-y-6 p-8 text-center">
+        <div className="absolute inset-0 z-0 bg-black/30 gap-2" />
+        <TemperedGlassCard className="z-10 w-full max-w-md space-y-6 p-10 text-center">
+          <div className="flex flex-col items-center gap-3">
+             <img src="/spire.png" alt="spire logo " className="w-8 h-8" />
+            <h1 className="text-2xl font-bold  text-white/80">Welcome back!</h1>
+            <p className="text-white/50 text-[0.675rem] mb-2 font-light">Please continue with google to start using spire</p>
+          </div>
           <GlassButton
             onClick={signInWithGoogle}
             glassVariant="liquid-refract"
-            className="w-full rounded-xl py-3 font-semibold text-white hover:text-black"
+            className="w-full rounded-xl py-5 font-semibold text-white hover:bg-white/10 transition duration-300 flex items-center justify-center gap-2"
           >
-            Sign in with Google
+            Continue with Google
           </GlassButton>
         </TemperedGlassCard>
       </div>
@@ -536,6 +721,19 @@ function AppContent() {
       />
       <div className="absolute inset-0 pointer-events-none z-0 bg-black/10 backdrop-blur-[1px]" />
 
+      {/* NEW: Reauth banner — shown when Google Drive token refresh genuinely fails */}
+      {needsReauth && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[999] flex items-center gap-2 bg-red-500/90 text-white text-xs sm:text-sm px-4 py-2 rounded-full shadow-lg backdrop-blur-md">
+          <span>Your Google session expired.</span>
+          <button
+            onClick={signInWithGoogle}
+            className="underline font-semibold hover:text-white/80 transition-colors"
+          >
+            Reconnect
+          </button>
+        </div>
+      )}
+
       {/* Audio Engine */}
       <AudioPlayer
         activeTrack={activeTrack}
@@ -545,8 +743,8 @@ function AppContent() {
         seekTime={seekTime}
         onTimeUpdate={setCurrentTime}
         onDurationChange={setDuration}
-        onEnded={() => setIsPlaying(false)}
-        onRefreshToken={refreshGoogleToken}
+        onEnded={handleTrackEnded}
+        onRefreshToken={handleRefreshToken}
       />
 
       {isExpandedViewOpen ? (
@@ -561,6 +759,10 @@ function AppContent() {
           onSeek={handleSeek}
           onNext={handleNextTrack}
           onPrevious={handlePreviousTrack}
+          isShuffle={isShuffle}
+          onToggleShuffle={() => setIsShuffle((v) => !v)}
+          isRepeat={isRepeat}
+          onToggleRepeat={() => setIsRepeat((v) => !v)}
           onClose={() => setIsExpandedViewOpen(false)}
           isLiked={activeTrack?.id ? likedTrackIds.has(activeTrack.id) : false}
           onToggleLike={() => toggleLikeTrack(activeTrack?.id)}
@@ -576,13 +778,10 @@ function AppContent() {
       ) : (
         <>
           {/* Floating Left Bar */}
-          <div className="fixed left-35 top-1/2 -translate-y-1/2 z-50">
-            <FloatingBar />
-          </div>
+          <FloatingBar />
 
-          <main className="flex-1 min-h-0 max-w-6xl w-full mx-auto px-6 pl-24 pt-6 pb-2 flex flex-col relative z-10">
-            
-            {/* FIXED SEARCH BAR Z-INDEX FIX: z-[100] and relative ensure dropdown is on top */}
+          <main className="flex-1 min-h-0 h-full overflow-hidden max-w-6xl w-full mx-auto px-6 pl-20 pt-6 pb-2 flex flex-col relative z-10">
+
             <div className="shrink-0 mb-4 relative z-[100]">
    <GlassSearchBar
      onSelectSong={(selectedTrack) => {
@@ -596,9 +795,8 @@ function AppContent() {
      onThemeToggle={handleThemeToggle}
   />
 </div>
-            {/* CARD CONTAINER: Explicitly kept z-10 so it stays beneath the search bar */}
-            <TemperedGlassCard className="relative z-10 flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-              
+            <TemperedGlassCard surfaceClassName="flex flex-col h-full" className="relative z-10 flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+
               <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8 custom-scrollbar">
                 <Routes>
                   <Route
@@ -610,6 +808,8 @@ function AppContent() {
                         isUploading={uploadStep > 0 && uploadStep < 4}
                         onFileUpload={handleFileUpload}
                         onPlayTrack={handlePlayTrack}
+                        playlists={playlists}
+                        onAddToPlaylist={handleAddToPlaylist}
                       />
                     }
                   />
@@ -621,6 +821,9 @@ function AppContent() {
                          onPlayTrack={handlePlayTrack}
                          currentTrack={activeTrack}
                          continueListening={continueListening}
+                         playlists={playlists}
+                         onAddToPlaylist={handleAddToPlaylist}
+                         listeningHistory={listeningHistory}
                        />
                     }
                   />
@@ -629,9 +832,14 @@ function AppContent() {
                     element={
                       <PlaylistsView
                         playlists={playlists}
-                        setPlaylists={setPlaylists}
                         userTracks={userTracks}
                         onPlayTrack={handlePlayTrack}
+                        onPlaylistPlay={handlePlaylistPlay}
+                        onCreatePlaylist={handleCreatePlaylist}
+                        onDeletePlaylist={handleDeletePlaylist}
+                        onRenamePlaylist={handleRenamePlaylist}
+                        onRemoveTrackFromPlaylist={handleRemoveTrackFromPlaylist}
+                        onAddToPlaylist={handleAddToPlaylist}
                       />
                     }
                   />
@@ -654,7 +862,7 @@ function AppContent() {
 
           {/* FIXED FOOTER PLAYER */}
           <footer className="shrink-0 z-40 p-2 bg-gradient-to-t from-black/90 via-black/60 to-transparent">
-            <AppleMusicBar
+            <MusicBar
               activeTrack={activeTrack}
               isPlaying={isPlaying}
               setIsPlaying={setIsPlaying}
@@ -662,6 +870,10 @@ function AppContent() {
               duration={duration}
               volume={volume}
               setVolume={setVolume}
+              isShuffle={isShuffle}
+              onToggleShuffle={() => setIsShuffle((v) => !v)}
+              isRepeat={isRepeat}
+              onToggleRepeat={() => setIsRepeat((v) => !v)}
               onSeek={handleSeek}
               onNext={handleNextTrack}
               onPrevious={handlePreviousTrack}
@@ -692,5 +904,22 @@ function AppContent() {
 }
 
 export default function App() {
+  const [currentScreen, setCurrentScreen] = useState(() => {
+    return sessionStorage.getItem("spire_screen") || "opening";
+  });
+
+  const handleScreenChange = (screen) => {
+    sessionStorage.setItem("spire_screen", screen);
+    setCurrentScreen(screen);
+  };
+
+  if (currentScreen === "opening") {
+    return <Opening onComplete={() => handleScreenChange("landing")} />;
+  }
+
+  if (currentScreen === "landing") {
+    return <Landing onLaunchSpire={() => handleScreenChange("app")} />;
+  }
+
   return <AppContent />;
 }

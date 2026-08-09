@@ -1,7 +1,6 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useEffect } from "react";
 import { GlassCard } from "@/components/ui/glasscn/glass-card";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
-import PrivacyPolicyModal from "@/components/PrivacyPolicyModal";
 import "material-symbols/rounded.css";
 
 export default function SettingsView({
@@ -11,7 +10,6 @@ export default function SettingsView({
   onSignOut,
 }) {
   const fileInputRef = useRef(null);
-  const [showPrivacy, setShowPrivacy] = useState(false);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -30,7 +28,7 @@ export default function SettingsView({
 
   return (
     <>
-      <div className="mx-auto h-full max-h-full max-w-md flex flex-col justify-between p-4 font-sans text-white overflow-hidden select-none">
+      <div className="w-full max-w-2xl mx-auto space-y-6 p-4 font-sans text-white select-none">
         <div className="flex items-center justify-center gap-2 pt-1">
           <h1 className="text-lg font-bold tracking-wide text-white/90">Personal Info</h1>
           <LiquidGlass
@@ -119,18 +117,9 @@ export default function SettingsView({
           />
         </GlassCard>
 
-        <button 
-          type="button"
-          onClick={() => setShowPrivacy(true)}
-          className="flex w-full items-center justify-center py-1 cursor-pointer transition-opacity hover:opacity-80 focus:outline-none"
-        >
-          <p className="text-[11px] font-medium text-cyan-200 text-center">
-            Privacy Policy &amp; Terms of Service
-          </p>
-        </button>
       </div>
 
-      <PrivacyPolicyModal isOpen={showPrivacy} onClose={() => setShowPrivacy(false)} />
+      
     </>
   );
 }

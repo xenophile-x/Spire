@@ -16,11 +16,11 @@ function GlassCard({
     return (
       <LiquidGlass
         {...liquidProps}
-        className={cn("rounded-2xl", className, liquidProps?.className)}>
+        className={cn("rounded-2xl", surfaceClassName, liquidProps?.className)}>
         <Card
           data-slot="glass-card"
           data-glass-variant={glassVariant}
-          className={cn("bg-transparent border-0 shadow-none ring-0 w-full h-full", surfaceClassName)}
+          className={cn("bg-transparent border-0 shadow-none ring-0", className)}
           {...props} />
       </LiquidGlass>
     );

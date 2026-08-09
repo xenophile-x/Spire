@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// Mock audio synth to replace the missing import
 const audioSynth = {
   enabled: false,
   volume: 0,
@@ -11,20 +10,11 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
   const canvasRef = useRef(null);
   const pencilBarsRef = useRef([]);
 
-  // Initialize concentrated 3D pencil cylinder tunnel
   useEffect(() => {
-    // Full rainbow palette (exact hex spectrum) plus pink
     const openglColors = [
-  "#333333",
-  "#00b2ff",
-  "#13e6a3",
-  "#00e650",
-  "#ffe600",
-  "#ff5500",
-  "#FF0000",
-  "#8e00fe",
-  "#ff007f"
-];
+      "#333333", "#00b2ff", "#13e6a3", "#00e650", 
+      "#ffe600", "#ff5500", "#FF0000", "#8e00fe", "#ff007f"
+    ];
 
     const bars = [];
     const ringCount = 10;
@@ -36,8 +26,6 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
       const zOffset = r * 110;
       for (let i = 0; i < barsPerRing; i++) {
         const angle = (i / barsPerRing) * Math.PI * 2 + r * 0.15 + (Math.random() - 0.5) * 0.08;
-
-        // Cycle through the full rainbow palette
         const color = openglColors[globalIndex % openglColors.length];
         globalIndex++;
 
@@ -65,21 +53,15 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
       const cy = height / 2;
       const focalLength = Math.min(width, height) * 0.85;
 
-      // Pure white background matching OpenGL's glClearColor(1, 1, 1, 0)
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, width, height);
 
-      // Slowly dive further into the tunnel as progress advances
       const diveZ = Math.pow(progress, 2.5) * 5500;
 
       const sortedBars = [...pencilBarsRef.current]
-        .map((bar) => {
-          const relZ = 2000 + bar.zOffset - diveZ;
-          return { ...bar, relZ };
-        })
-        .filter((b) => b.relZ > 5 && b.relZ < 5000);
-
-      sortedBars.sort((a, b) => b.relZ - a.relZ);
+        .map((bar) => ({ ...bar, relZ: 2000 + bar.zOffset - diveZ }))
+        .filter((b) => b.relZ > 5 && b.relZ < 5000)
+        .sort((a, b) => b.relZ - a.relZ);
 
       sortedBars.forEach((bar) => {
         const zNear = Math.max(1, bar.relZ);
@@ -113,25 +95,12 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
           ctx.beginPath();
           ctx.moveTo(p1x, p1y);
           ctx.lineTo(p2x, p2y);
-          ctx.arc(
-            xFarCenter,
-            yFarCenter,
-            Math.max(1, thickFar / 2),
-            bar.angle + Math.PI / 2,
-            bar.angle - Math.PI / 2
-          );
+          ctx.arc(xFarCenter, yFarCenter, Math.max(1, thickFar / 2), bar.angle + Math.PI / 2, bar.angle - Math.PI / 2);
           ctx.lineTo(p4x, p4y);
-          ctx.arc(
-            xNearCenter,
-            yNearCenter,
-            Math.max(1, thickNear / 2),
-            bar.angle - Math.PI / 2,
-            bar.angle + Math.PI / 2
-          );
+          ctx.arc(xNearCenter, yNearCenter, Math.max(1, thickNear / 2), bar.angle - Math.PI / 2, bar.angle + Math.PI / 2);
           ctx.closePath();
         };
 
-        // Soft blurred glow pass — feathers the edges like a motion blur
         ctx.save();
         ctx.filter = 'blur(9px)';
         ctx.globalAlpha = 0.55;
@@ -140,7 +109,6 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
         ctx.fill();
         ctx.restore();
 
-        // Sharp core pass on top for definition
         ctx.save();
         ctx.globalAlpha = 0.95;
         buildPath();
@@ -166,9 +134,7 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
     window.addEventListener('resize', resizeCanvas);
     render();
 
-    return () => {
-      window.removeEventListener('resize', resizeCanvas);
-    };
+    return () => window.removeEventListener('resize', resizeCanvas);
   }, [progress]);
 
   return (
@@ -178,14 +144,78 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
   );
 };
 
-export default function App() {
+export default function Opening({ onComplete }) {
+  const [hasStarted, setHasStarted] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
   const maxTime = 4.0;
   const lastPlayedTrigger = useRef(-1);
+  const audioRef = useRef(null);
 
-  // Sound sync trigger based on currentTime
+  // Initialize audio once
   useEffect(() => {
+    audioRef.current = new Audio('/boot.mp3');
+    audioRef.current.volume = 0.6;
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  // Action to start the sequence
+  const startSequence = () => {
+    if (hasStarted) return;
+    setHasStarted(true);
+    setIsPlaying(true);
+    if (audioRef.current) {
+      audioRef.current.play().catch((err) => console.log("Audio play failed:", err));
+    }
+  };
+
+  // Keyboard & Click controls after starting
+  const handleBackgroundClick = () => {
+    if (!hasStarted) return; // Let the intro button handle the initial start
+
+    if (currentTime >= maxTime) {
+      if (onComplete) onComplete();
+    } else {
+      setIsPlaying((prev) => {
+        const nextState = !prev;
+        if (audioRef.current) {
+          nextState ? audioRef.current.play().catch(()=>{}) : audioRef.current.pause();
+        }
+        return nextState;
+      });
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Enter") {
+        if (!hasStarted) {
+          startSequence();
+        } else {
+          // Skip logic if already running
+          if (currentTime >= maxTime) {
+            if (onComplete) onComplete();
+          } else {
+            setCurrentTime(maxTime);
+            setIsPlaying(false);
+            if (audioRef.current) audioRef.current.pause();
+          }
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [hasStarted, currentTime, onComplete]);
+
+  // Sync Synth Logic
+  useEffect(() => {
+    if (!hasStarted) return;
     audioSynth.enabled = true;
     audioSynth.volume = 0.3;
 
@@ -195,10 +225,12 @@ export default function App() {
     } else if (currentTime < 0.1) {
       lastPlayedTrigger.current = -1;
     }
-  }, [currentTime]);
+  }, [currentTime, hasStarted]);
 
-  // Main animation ticker loop — loops continuously instead of stopping
+  // Animation Loop
   useEffect(() => {
+    if (!isPlaying) return;
+
     let animationFrameId;
     let lastStamp = null;
 
@@ -207,47 +239,55 @@ export default function App() {
       const delta = (stamp - lastStamp) / 1000;
       lastStamp = stamp;
 
-      if (isPlaying) {
-        setCurrentTime((prev) => {
-          const next = prev + delta;
-          if (next >= maxTime) {
-            setIsPlaying(false);
-            return maxTime; // Stop once, don't repeat
-          }
-          return next;
-        });
-      }
+      setCurrentTime((prev) => {
+        const next = prev + delta;
+        if (next >= maxTime) {
+          setIsPlaying(false);
+          return maxTime; 
+        }
+        return next;
+      });
 
       animationFrameId = requestAnimationFrame(tick);
     };
 
     animationFrameId = requestAnimationFrame(tick);
-
     return () => cancelAnimationFrame(animationFrameId);
   }, [isPlaying]);
 
-  // Speed burst progress normalized from 0 to 1
+  // Auto-advance
+  useEffect(() => {
+    if (hasStarted && currentTime >= maxTime) {
+      const timer = setTimeout(() => {
+        if (onComplete) onComplete();
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [currentTime, hasStarted, onComplete]);
+
   const burstProgress = Math.min(1, Math.max(0, currentTime / maxTime));
 
   return (
     <div
-      className="relative h-screen w-screen bg-[#ffffff] font-sans overflow-hidden select-none cursor-pointer"
-      onClick={() => setIsPlaying(!isPlaying)}
+      className="relative h-screen w-screen bg-[#ffffff] font-sans overflow-hidden select-none cursor-pointer flex items-center justify-center"
+      onClick={handleBackgroundClick}
     >
-      {/* 3D pencil cylinder tunnel canvas */}
       <SpeedLinesCanvas progress={burstProgress} lineCount={72} />
-
-      {currentTime >= maxTime && (
-  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
-    <h1
-      className="text-4xl md:text-6xl text-black/60 leading-tight mb-4"
-      style={{ fontFamily: "'Courier New', monospace", letterSpacing: '0.07em', fontWeight: 700 }}
-    >
-      Welcome to Spire !
-    </h1>
-    <p className="text-sm text-black/30 font-mono hover:text-black/50">Press Enter to continue</p>
-  </div>
-)}
+      
+      {/* Pre-start White Overlay Gate */}
+      {!hasStarted && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white transition-opacity duration-500">
+          <button
+            onClick={(e) => {
+              e.stopPropagation(); // Prevents background click from firing at the same time
+              startSequence();
+            }}
+            className="px-8 py-3 bg-white text-gray-500 font-medium tracking-wide rounded-full border border-gray-200 shadow-sm transition-all duration-300 ease-out hover:scale-105 hover:shadow-md hover:text-gray-800 focus:outline-none"
+          >
+            Press Enter to continue
+          </button>
+        </div>
+      )}
     </div>
   );
 }

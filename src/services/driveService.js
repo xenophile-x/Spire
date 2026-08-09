@@ -1,11 +1,8 @@
-// src/services/driveService.js
+
 
 const MUSIC_FOLDER_NAME = "Spire_Music_Songs";
 const BACKGROUND_FOLDER_NAME = "Spire_Backgrounds";
 
-/**
- * Fetches Google Drive file as a Blob URL to bypass CORS 403 restrictions on <audio> elements.
- */
 export async function getDriveAudioBlobUrl(fileId, accessToken) {
   if (!fileId || !accessToken) return "";
 
@@ -31,9 +28,6 @@ export async function getDriveAudioBlobUrl(fileId, accessToken) {
   }
 }
 
-/**
- * Retrieves or creates a specific folder inside Google Drive.
- */
 export async function getOrCreateFolder(folderName, accessToken) {
   const query = encodeURIComponent(
     `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
@@ -65,9 +59,6 @@ export async function getOrCreateFolder(folderName, accessToken) {
   return createData.id;
 }
 
-/**
- * Uploads audio track binary to Google Drive under 'Spire_Music_Songs'.
- */
 export async function uploadToGoogleDrive(file, accessToken) {
   const folderId = await getOrCreateFolder(MUSIC_FOLDER_NAME, accessToken);
 
@@ -100,9 +91,6 @@ export async function uploadToGoogleDrive(file, accessToken) {
   return data.id;
 }
 
-/**
- * Uploads a background wallpaper to Google Drive under 'Spire_Backgrounds'.
- */
 export async function uploadBackgroundToDrive(file, accessToken, oldFileId = null) {
   if (oldFileId) {
     try {
@@ -145,15 +133,10 @@ export async function uploadBackgroundToDrive(file, accessToken, oldFileId = nul
   const data = await response.json();
   return data.id;
 }
-// src/services/driveService.js
 
-/**
- * Fetches all existing audio files directly from the user's Google Drive storage
- */
 export async function fetchAudioFilesFromDrive(accessToken) {
   if (!accessToken) throw new Error("No Google access token provided.");
 
-  // Query Drive API for files with audio MIME types
   const query = "mimeType contains 'audio/' and trashed = false";
   const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
     query
@@ -172,11 +155,10 @@ export async function fetchAudioFilesFromDrive(accessToken) {
   const data = await response.json();
   const files = data.files || [];
 
-  // Format into standard track objects
   return files.map((file) => ({
     id: file.id,
     drive_file_id: file.id,
-    title: file.name.replace(/\.[^/.]+$/, ""), // Strip file extension
+    title: file.name.replace(/\.[^/.]+$/, ""), 
     artist: "Drive Library",
     album: "Google Drive",
     cover: file.thumbnailLink || "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&q=80&w=300",
