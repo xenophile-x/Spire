@@ -1,19 +1,49 @@
-
+import {
+  getValidDriveToken,
+  refreshDriveAccessToken,
+} from "@/utils/driveApi";
 
 const MUSIC_FOLDER_NAME = "Spire_Music_Songs";
 const BACKGROUND_FOLDER_NAME = "Spire_Backgrounds";
 
+async function resolveToken(fallbackToken) {
+  const valid = await getValidDriveToken();
+  return valid || fallbackToken || "";
+}
+
+async function driveFetch(url, init = {}, fallbackToken) {
+  const token = await resolveToken(fallbackToken);
+  if (!token) throw new Error("No Google access token available.");
+
+  const request = (t) =>
+    fetch(url, {
+      ...init,
+      headers: { ...(init.headers || {}), Authorization: `Bearer ${t}` },
+    });
+
+  let response = await request(token);
+
+  // Token expired mid-flight — refresh once and retry
+  if (response.status === 401) {
+    const fresh = await refreshDriveAccessToken();
+    if (fresh) {
+      response = await request(fresh);
+    } else {
+      throw new Error("UNAUTHORIZED");
+    }
+  }
+
+  return response;
+}
+
 export async function getDriveAudioBlobUrl(fileId, accessToken) {
-  if (!fileId || !accessToken) return "";
+  if (!fileId) return "";
 
   try {
-    const response = await fetch(
+    const response = await driveFetch(
       `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }
+      {},
+      accessToken
     );
 
     if (!response.ok) {
@@ -33,9 +63,10 @@ export async function getOrCreateFolder(folderName, accessToken) {
     `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
   );
 
-  const searchRes = await fetch(
+  const searchRes = await driveFetch(
     `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id, name)`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    {},
+    accessToken
   );
   const searchData = await searchRes.json();
 
@@ -43,17 +74,20 @@ export async function getOrCreateFolder(folderName, accessToken) {
     return searchData.files[0].id;
   }
 
-  const createRes = await fetch("https://www.googleapis.com/drive/v3/files", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+  const createRes = await driveFetch(
+    "https://www.googleapis.com/drive/v3/files",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: folderName,
+        mimeType: "application/vnd.google-apps.folder",
+      }),
     },
-    body: JSON.stringify({
-      name: folderName,
-      mimeType: "application/vnd.google-apps.folder",
-    }),
-  });
+    accessToken
+  );
 
   const createData = await createRes.json();
   return createData.id;
@@ -74,13 +108,13 @@ export async function uploadToGoogleDrive(file, accessToken) {
   );
   formData.append("file", file);
 
-  const response = await fetch(
+  const response = await driveFetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
       body: formData,
-    }
+    },
+    accessToken
   );
 
   if (!response.ok) {
@@ -94,10 +128,11 @@ export async function uploadToGoogleDrive(file, accessToken) {
 export async function uploadBackgroundToDrive(file, accessToken, oldFileId = null) {
   if (oldFileId) {
     try {
-      await fetch(`https://www.googleapis.com/drive/v3/files/${oldFileId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      await driveFetch(
+        `https://www.googleapis.com/drive/v3/files/${oldFileId}`,
+        { method: "DELETE" },
+        accessToken
+      );
     } catch (err) {
       console.warn("Could not delete previous background:", err);
     }
@@ -117,13 +152,13 @@ export async function uploadBackgroundToDrive(file, accessToken, oldFileId = nul
   );
   formData.append("file", file);
 
-  const response = await fetch(
+  const response = await driveFetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
       body: formData,
-    }
+    },
+    accessToken
   );
 
   if (!response.ok) {
@@ -135,18 +170,17 @@ export async function uploadBackgroundToDrive(file, accessToken, oldFileId = nul
 }
 
 export async function fetchAudioFilesFromDrive(accessToken) {
-  if (!accessToken) throw new Error("No Google access token provided.");
+  if (!accessToken) {
+    const valid = await getValidDriveToken();
+    if (!valid) throw new Error("No Google access token provided.");
+  }
 
   const query = "mimeType contains 'audio/' and trashed = false";
   const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
     query
   )}&fields=files(id, name, mimeType, size, createdTime, thumbnailLink)&pageSize=100`;
 
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+  const response = await driveFetch(url, {}, accessToken);
 
   if (!response.ok) {
     throw new Error(`Failed to list Google Drive files: ${response.statusText}`);
@@ -158,7 +192,7 @@ export async function fetchAudioFilesFromDrive(accessToken) {
   return files.map((file) => ({
     id: file.id,
     drive_file_id: file.id,
-    title: file.name.replace(/\.[^/.]+$/, ""), 
+    title: file.name.replace(/\.[^/.]+$/, ""),
     artist: "Drive Library",
     album: "Google Drive",
     cover: file.thumbnailLink || "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&q=80&w=300",

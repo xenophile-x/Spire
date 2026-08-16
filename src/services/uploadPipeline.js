@@ -33,7 +33,7 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
   }
 
   const fallbackImg =
-    "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&q=80&w=600";
+    "https://cdn.saleminteractivemedia.com/shared/images/default-cover-art.png";
 
   const localDurationSeconds = await getAudioFileDuration(file);
 

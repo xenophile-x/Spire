@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { getValidDriveToken } from "@/utils/driveApi";
 
 export function parseLRC(lrcString) {
   if (!lrcString || typeof lrcString !== "string") return [];
@@ -24,9 +25,11 @@ export function parseLRC(lrcString) {
 }
 
 async function fetchDriveAudio(driveId, token) {
+  const valid = (await getValidDriveToken()) || token;
+  if (!valid) throw new Error("No Drive token available.");
   const response = await fetch(
     `https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${valid}` } }
   );
   return response;
 }
@@ -41,13 +44,24 @@ export default function AudioPlayer({
   onDurationChange,
   onEnded,
   onLyricsParsed,
+  isRepeat = false,
   onRefreshToken, // now actually used
 }) {
   const audioRef = useRef(null);
+  // Bumped on every new load request — stale async steps check their token and bail.
+  const loadTokenRef = useRef(0);
+  // Which track id the <audio> element currently holds; lets the play/pause
+  // effect avoid calling play() on a stale source while a new one loads.
+  const loadedTrackIdRef = useRef(null);
 
   useEffect(() => {
     let isMounted = true;
     let currentBlobUrl = null;
+    const token = ++loadTokenRef.current;
+
+    // Silence whatever was playing immediately — no overlap while the new
+    // source loads.
+    if (audioRef.current) audioRef.current.pause();
 
     async function loadAudioSource() {
       if (!audioRef.current || !activeTrack) return;
@@ -83,6 +97,9 @@ export default function AudioPlayer({
             throw new Error(`Drive fetch error: ${response.status} ${response.statusText}`);
           }
 
+          // A newer track was requested while we were fetching — this load is stale.
+          if (!isMounted || loadTokenRef.current !== token) return;
+
           const rawBlob = await response.blob();
           const mimeType =
             rawBlob.type && rawBlob.type !== "application/octet-stream"
@@ -99,9 +116,43 @@ export default function AudioPlayer({
         }
       }
 
-      if (audioUrl && isMounted) {
-        audioRef.current.src = audioUrl;
-        audioRef.current.load();
+      if (!audioUrl || !isMounted || loadTokenRef.current !== token) return;
+
+      audioRef.current.src = audioUrl;
+      audioRef.current.load();
+      loadedTrackIdRef.current = activeTrack?.id || null;
+
+      const waitForReady = () =>
+        new Promise((resolve) => {
+          const audio = audioRef.current;
+          const onReady = () => {
+            cleanup();
+            resolve();
+          };
+          const onError = () => {
+            cleanup();
+            resolve();
+          };
+          const cleanup = () => {
+            audio.removeEventListener("canplay", onReady);
+            audio.removeEventListener("error", onError);
+          };
+          audio.addEventListener("canplay", onReady);
+          audio.addEventListener("error", onError);
+        });
+
+      waitForReady().then(() => {
+        // This load got superseded — discard it silently.
+        if (!isMounted || loadTokenRef.current !== token) return;
+
+        // Apply a pending seek (radio live-resume) once the track is ready.
+        if (typeof seekTime === "number" && !isNaN(seekTime) && seekTime > 0) {
+          try {
+            audioRef.current.currentTime = seekTime;
+          } catch {
+            /* seek can throw before metadata is fully ready — ignore */
+          }
+        }
 
         if (isPlaying) {
           audioRef.current.play().catch((err) => {
@@ -110,7 +161,7 @@ export default function AudioPlayer({
             }
           });
         }
-      }
+      });
     }
 
     loadAudioSource();
@@ -118,7 +169,10 @@ export default function AudioPlayer({
     return () => {
       isMounted = false;
       if (currentBlobUrl) {
-        URL.revokeObjectURL(currentBlobUrl);
+        const url = currentBlobUrl;
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+        }, 10000);
       }
     };
   }, [
@@ -132,6 +186,9 @@ export default function AudioPlayer({
     if (!audioRef.current || !audioRef.current.src) return;
 
     if (isPlaying) {
+      // Only play if the element is actually holding the requested track —
+      // otherwise the load effect will play it once ready (load-token guarded).
+      if (loadedTrackIdRef.current !== activeTrack?.id) return;
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch((err) => {
@@ -141,9 +198,12 @@ export default function AudioPlayer({
         });
       }
     } else {
+      if (onTimeUpdate && audioRef.current) {
+        onTimeUpdate(audioRef.current.currentTime);
+      }
       audioRef.current.pause();
     }
-  }, [isPlaying]);
+  }, [isPlaying, activeTrack?.id, onTimeUpdate]);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -177,6 +237,18 @@ export default function AudioPlayer({
     }
   }, [activeTrack, onLyricsParsed]);
 
+  const handleEnded = () => {
+    if (isRepeat && audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch((err) => {
+        if (err.name !== "AbortError") console.error("[AudioPlayer] Repeat play error:", err);
+      });
+      if (onTimeUpdate) onTimeUpdate(0);
+      return;
+    }
+    if (onEnded) onEnded();
+  };
+
   return (
     <audio
       ref={audioRef}
@@ -190,7 +262,7 @@ export default function AudioPlayer({
           onDurationChange(audioRef.current.duration);
         }
       }}
-      onEnded={onEnded}
+      onEnded={handleEnded}
       preload="auto"
       className="hidden"
     />

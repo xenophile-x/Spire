@@ -15,6 +15,8 @@ export const getUserLibrary = async (userId) => {
         canonical_title,
         canonical_artist,
         duration_seconds,
+        artist_id,
+        artists ( name, photo_url, bio, favorite_artists ( artist_id ) ),
         track_metadata ( artwork_url, primary_genre ),
         track_lyrics ( synced_lyrics )
       )
@@ -23,6 +25,82 @@ export const getUserLibrary = async (userId) => {
 
   if (error) throw error;
   return data;
+};
+
+// --- ARTISTS ---
+export const getDistinctArtistsWithIds = async (userId) => {
+  try {
+    const { data, error } = await supabase
+      .from("user_tracks")
+      .select(`
+      tracks (
+        artist_id,
+        canonical_artist,
+        artists ( id, name, photo_url )
+      )
+    `)
+      .eq("user_id", userId);
+
+    if (error) throw error;
+
+    const map = new Map();
+    for (const rec of data || []) {
+      const t = rec?.tracks;
+      if (!t) continue;
+      const artistRow = Array.isArray(t.artists) ? t.artists[0] : t.artists;
+      const artistId = artistRow?.id || t.artist_id;
+      const name = artistRow?.name || t.canonical_artist;
+      if (!artistId || !name) continue;
+      if (!map.has(artistId)) {
+        map.set(artistId, { id: artistId, name, photo_url: artistRow?.photo_url || null });
+      }
+    }
+    return Array.from(map.values());
+  } catch (err) {
+    console.warn("[Supabase] Artists table not available yet (run the artists migration):", err);
+    return [];
+  }
+};
+
+export const updateArtistPhoto = async (artistId, photoUrl) => {
+  const { error } = await supabase
+    .from("artists")
+    .update({ photo_url: photoUrl })
+    .eq("id", artistId);
+  if (error) throw error;
+};
+
+// --- FAVORITE ARTISTS ---
+export const toggleArtistFavorite = async (userId, artistName) => {
+  const { data: artist } = await supabase
+    .from("artists")
+    .select("id")
+    .eq("name", artistName)
+    .maybeSingle();
+  if (!artist) return false;
+
+  const { data: existing } = await supabase
+    .from("favorite_artists")
+    .select("artist_id")
+    .eq("user_id", userId)
+    .eq("artist_id", artist.id)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("favorite_artists")
+      .delete()
+      .eq("user_id", userId)
+      .eq("artist_id", artist.id);
+    if (error) throw error;
+    return false;
+  }
+
+  const { error } = await supabase
+    .from("favorite_artists")
+    .insert({ user_id: userId, artist_id: artist.id });
+  if (error) throw error;
+  return true;
 };
 
 // --- LISTENING HISTORY ---
@@ -107,7 +185,7 @@ export const getUserPlaylists = async (userId) => {
     description: pl.description,
     isFolder: false,
     songIds: pl.playlist_tracks.map((pt) => pt.track_id),
-    image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80",
+    image: null,
   }));
 };
 
@@ -135,7 +213,7 @@ export const createPlaylist = async (userId, title, description = "") => {
     description: data.description,
     isFolder: false,
     songIds: [],
-    image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80",
+    image: null,
   };
 };
 

@@ -31,16 +31,23 @@ export default function ExpandedLyricsView({
   _onToggleShuffle,
   _isRepeat = false,
   _onToggleRepeat,
+  isRadioMode = false,
+  onToggleRadio,
   onClose,
   isLiked,
   onToggleLike,
-  onNavigateToPlaylists,
   playlists = [],
   onAddToPlaylist,
   onPlayTrack,
+  initialLyrics = false,
 }) {
-  const [showLyrics, setShowLyrics] = useState(false);
+  const [showLyrics, setShowLyrics] = useState(initialLyrics);
   const lyricsContainerRef = useRef(null);
+  const lyricsJustOpenedRef = useRef(false);
+
+  useEffect(() => {
+    lyricsJustOpenedRef.current = showLyrics;
+  }, [showLyrics]);
 
   const trackList = React.useMemo(() => {
     // If no tracks exist and no activeTrack is set, render ONLY the single default track
@@ -106,14 +113,21 @@ export default function ExpandedLyricsView({
   }, [currentTime, parsedLyrics]);
 
   useEffect(() => {
-    if (showLyrics && activeLyricIdx >= 0 && lyricsContainerRef.current) {
-      const activeEl = lyricsContainerRef.current.children[activeLyricIdx];
-      if (activeEl) {
-        activeEl.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      }
+    if (!showLyrics || activeLyricIdx < 0) return;
+    const container = lyricsContainerRef.current;
+    if (!container) return;
+    const activeEl = container.children[activeLyricIdx + 1];
+    if (!activeEl) return;
+
+    const target =
+      activeEl.offsetTop - container.clientHeight / 2 + activeEl.offsetHeight / 2;
+    const clamped = Math.max(0, Math.min(target, container.scrollHeight - container.clientHeight));
+
+    if (lyricsJustOpenedRef.current) {
+      container.scrollTop = clamped;
+      lyricsJustOpenedRef.current = false;
+    } else {
+      container.scrollTo({ top: clamped, behavior: "smooth" });
     }
   }, [activeLyricIdx, showLyrics]);
 
@@ -138,7 +152,11 @@ export default function ExpandedLyricsView({
 
       {/* CENTER VIEWPORT */}
       <div className="w-full max-w-6xl mx-auto flex-1 flex items-center justify-center my-auto">
-        {showLyrics ? (
+        <div
+          key={showLyrics ? "lyrics" : "carousel"}
+          className="w-full animate-in fade-in-0 zoom-in-95 animation-duration-300 flex items-center justify-center"
+        >
+          {showLyrics ? (
           /* MODE A: Frosted Liquid Glass Lyrics Card */
           <GlassScrimCard
             scrim={false}
@@ -160,8 +178,9 @@ export default function ExpandedLyricsView({
 
             <div
               ref={lyricsContainerRef}
-              className="flex-1 overflow-y-auto space-y-6 my-4 pr-2 custom-scrollbar scroll-smooth flex flex-col items-center text-center justify-center relative z-10"
+              className="flex-1 overflow-y-auto space-y-6 my-4 pr-2 custom-scrollbar flex flex-col items-center text-center relative z-10"
             >
+              <div className="h-32 shrink-0" />
               {parsedLyrics.length > 0 ? (
                 parsedLyrics.map((line, idx) => {
                   const isActive = idx === activeLyricIdx;
@@ -182,6 +201,7 @@ export default function ExpandedLyricsView({
               ) : (
                 <p className="text-base text-white/50 italic">No synced lyrics available for this track.</p>
               )}
+              <div className="h-32 shrink-0" />
             </div>
           </GlassScrimCard>
         ) : (
@@ -251,6 +271,7 @@ export default function ExpandedLyricsView({
             })}
           </div>
         )}
+        </div>
       </div>
 
       {/* APPLE MUSIC PLAYER BAR */}
@@ -258,7 +279,7 @@ export default function ExpandedLyricsView({
         <MusicBar
           activeTrack={currentTrack}
           isPlaying={isPlaying}
-          setIsPlaying={onTogglePlay}
+          onTogglePlay={onTogglePlay}
           currentTime={currentTime}
           duration={duration}
           volume={volume}
@@ -266,10 +287,12 @@ export default function ExpandedLyricsView({
           onSeek={onSeek}
           onNext={onNext}
           onPrevious={onPrevious}
+          isRadioMode={isRadioMode}
+          onToggleRadio={onToggleRadio}
           isLiked={isLiked}
           onToggleLike={onToggleLike}
-          onNavigateToPlaylists={onNavigateToPlaylists}
-          onOpenExpandedView={() => setShowLyrics((prev) => !prev)}
+          onOpenExpandedView={() => setShowLyrics(false)}
+          onOpenLyrics={() => setShowLyrics((prev) => !prev)}
           playlists={playlists}
           onAddToPlaylist={onAddToPlaylist}
         />

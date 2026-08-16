@@ -1,8 +1,9 @@
-// src/views/HomeView.jsx
 import React, { useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import TrackCard from "@/components/TrackCard";
 import { GlassIcon } from "@/components/ui/glasscn/glass-icon";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
+import { splitArtistNames } from "@/utils/artistNames";
 
 export default function HomeView({
   userTracks = [],
@@ -13,12 +14,14 @@ export default function HomeView({
   playlists = [],
   onAddToPlaylist,
 }) {
+  const navigate = useNavigate();
   const scrollContainerRef = useRef(null);
+  const artistScrollRef = useRef(null);
 
-  const scroll = (direction) => {
-    if (scrollContainerRef.current) {
+  const scroll = (direction, ref) => {
+    if (ref?.current) {
       const scrollAmount = direction === "left" ? -350 : 350;
-      scrollContainerRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
+      ref.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
     }
   };
 
@@ -26,6 +29,29 @@ export default function HomeView({
   const recentTracks = userTracks.filter(
     (t) => t.uploadedAt && Date.now() - new Date(t.uploadedAt).getTime() <= ONE_DAY_MS
   );
+
+  const artistMap = {};
+  userTracks.forEach((t) => {
+    const names = splitArtistNames(t.artist);
+    if (!names.length) return;
+    names.forEach((name) => {
+      if (
+        name.toLowerCase() === "unknown artist" ||
+        name.toLowerCase() === "unknown"
+      ) {
+        return;
+      }
+      if (!artistMap[name]) {
+        artistMap[name] = {
+          name,
+          photo: t.artistPhotoUrl || "",
+          count: 0,
+        };
+      }
+      artistMap[name].count += 1;
+    });
+  });
+  const artists = Object.values(artistMap).sort((a, b) => b.count - a.count);
 
   const searchTerm = (searchQuery || "").trim().toLowerCase();
   const filteredTracks = searchTerm
@@ -90,13 +116,82 @@ export default function HomeView({
         </div>
       ) : (
         <>
+          {artists.length > 0 && (
+            <div className="w-full min-w-0 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-white">Artists</h2>
+                <div className="flex items-center gap-2">
+                  <GlassIcon
+                    size="sm"
+                    onClick={() => scroll("left", artistScrollRef)}
+                    aria-label="Scroll artists left"
+                    className="text-white"
+                    liquidProps={{ blur: 4, refraction: 4 }}
+                  >
+                    <span className="text-sm">‹</span>
+                  </GlassIcon>
+                  <GlassIcon
+                    size="sm"
+                    onClick={() => scroll("right", artistScrollRef)}
+                    aria-label="Scroll artists right"
+                    className="text-white"
+                    liquidProps={{ blur: 4, refraction: 4 }}
+                  >
+                    <span className="text-sm">›</span>
+                  </GlassIcon>
+                </div>
+              </div>
+
+              <div
+                ref={artistScrollRef}
+                className="no-scrollbar flex w-full min-w-0 flex-nowrap gap-5 overflow-x-auto scroll-smooth pt-1 pb-2"
+              >
+                {artists.map((artist) => {
+                  const initial = (artist.name[0] || "?").toUpperCase();
+                  return (
+                    <button
+                      key={artist.name}
+                      type="button"
+                      onClick={() => navigate(`/artist/${encodeURIComponent(artist.name)}`)}
+                      className="group flex w-28 shrink-0 cursor-pointer flex-col items-center gap-2"
+                      aria-label={`Open ${artist.name} page`}
+                    >
+                      <div className="relative h-28 w-28 overflow-hidden rounded-full transition-transform group-hover:scale-105">
+                        <div className="relative h-full w-full bg-gradient-to-br from-white/15 to-black/40">
+                          {artist.photo ? (
+                            <img
+                              src={artist.photo}
+                              alt={artist.name}
+                              loading="lazy"
+                              className="absolute inset-0 h-full w-full scale-125 object-cover object-[50%_25%]"
+                              onError={(e) => {
+                                e.currentTarget.remove();
+                              }}
+                            />
+                          ) : (
+                            <span className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white/20 via-white/10 to-black/50 text-5xl font-bold text-white/90 drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">
+                              {initial}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="max-w-full truncate text-center text-sm font-medium text-white/70 transition-colors group-hover:text-white">
+                        {artist.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="w-full min-w-0 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-white">Recently Added</h2>
               <div className="flex items-center gap-2">
                 <GlassIcon
                   size="sm"
-                  onClick={() => scroll("left")}
+                  onClick={() => scroll("left", scrollContainerRef)}
                   aria-label="Scroll left"
                   className="text-white"
                   liquidProps={{ blur: 4, refraction: 4 }}
@@ -105,7 +200,7 @@ export default function HomeView({
                 </GlassIcon>
                 <GlassIcon
                   size="sm"
-                  onClick={() => scroll("right")}
+                  onClick={() => scroll("right", scrollContainerRef)}
                   aria-label="Scroll right"
                   className="text-white"
                   liquidProps={{ blur: 4, refraction: 4 }}
@@ -131,7 +226,9 @@ export default function HomeView({
               ))}
             </div>
             {recentTracks.length === 0 && (
-              <p className="text-xs text-white/40">No tracks uploaded in the last day.</p>
+              <p className="text-xs text-white/40">
+                No tracks uploaded in the last day.
+              </p>
             )}
           </div>
 

@@ -25,7 +25,11 @@ export default function FloatingBar() {
       >
         <nav className="flex flex-col gap-1.5 items-center">
           {navItems.map((item) => {
-            const isActive = location.pathname === item.path;
+            // Artist pages are reached from Home, so Home stays selected there.
+            const isActive =
+              item.id === "home"
+                ? location.pathname === "/" || location.pathname.startsWith("/artist/")
+                : location.pathname === item.path;
 
             return (
               <div key={item.id} className="relative group">

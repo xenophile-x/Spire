@@ -26,7 +26,7 @@ export const glassVariantStyles = {
     "dark:backdrop-saturate-[1.6] dark:backdrop-brightness-[0.95]",
 
     // 2) Base translucent fill (acts as the panel's "tint").
-    "bg-white/[0.10] dark:bg-white/[0.04]",
+    "bg-white/[0.16] dark:bg-white/[0.04]",
 
     // 3) Layered radial-gradient sheen + warm bottom tint + vertical wash.
     //    Underscores represent spaces inside Tailwind arbitrary values.

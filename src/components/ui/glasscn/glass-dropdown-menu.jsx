@@ -8,20 +8,15 @@ import { DropdownMenuContent } from "../dropdown-menu";
 import { LiquidGlass } from "./liquid-glass";
 
 const menuStateStyles = [
-  "[&_[data-slot=dropdown-menu-item]:focus]:bg-white/70",
-  "[&_[data-slot=dropdown-menu-item]:focus]:text-black",
-  "dark:[&_[data-slot=dropdown-menu-item]:focus]:bg-white/12",
-  "dark:[&_[data-slot=dropdown-menu-item]:focus]:text-white",
-  "[&_[data-slot=dropdown-menu-checkbox-item]:focus]:bg-white/70",
-  "[&_[data-slot=dropdown-menu-checkbox-item]:focus]:text-black",
-  "dark:[&_[data-slot=dropdown-menu-checkbox-item]:focus]:bg-white/12",
-  "dark:[&_[data-slot=dropdown-menu-checkbox-item]:focus]:text-white",
-  "[&_[data-slot=dropdown-menu-sub-trigger]:focus]:bg-white/70",
-  "[&_[data-slot=dropdown-menu-sub-trigger]:focus]:text-black",
-  "dark:[&_[data-slot=dropdown-menu-sub-trigger]:focus]:bg-white/12",
-  "dark:[&_[data-slot=dropdown-menu-sub-trigger]:focus]:text-white",
-  "[&_[data-slot=dropdown-menu-separator]]:bg-white/25",
-  "dark:[&_[data-slot=dropdown-menu-separator]]:bg-white/10",
+  "[&_[data-slot=dropdown-menu-item]:focus]:bg-white/15",
+  "[&_[data-slot=dropdown-menu-item]:focus]:text-white",
+  "[&_[data-slot=dropdown-menu-checkbox-item]:focus]:bg-white/15",
+  "[&_[data-slot=dropdown-menu-checkbox-item]:focus]:text-white",
+  "[&_[data-slot=dropdown-menu-radio-item]:focus]:bg-white/15",
+  "[&_[data-slot=dropdown-menu-radio-item]:focus]:text-white",
+  "[&_[data-slot=dropdown-menu-sub-trigger]:focus]:bg-white/15",
+  "[&_[data-slot=dropdown-menu-sub-trigger]:focus]:text-white",
+  "[&_[data-slot=dropdown-menu-separator]]:bg-white/15",
 ].join(" ");
 
 function GlassDropdownMenuContent({
@@ -71,13 +66,12 @@ function GlassDropdownMenuContent({
       alignOffset={alignOffset}
       className={cn(
         glassVariantStyles[glassVariant],
-        "border border-white/30 bg-white/60 text-foreground shadow-2xl ring-1 ring-white/20 dark:border-white/10 dark:bg-black/55 dark:ring-white/10",
+        "border border-white/10 bg-black/55 text-white shadow-2xl ring-1 ring-white/10",
         menuStateStyles,
         className
       )}
       data-glass-variant={glassVariant}
       data-slot="glass-dropdown-menu-content"
-      showBackdrop={showBackdrop}
       side={side}
       sideOffset={sideOffset}
       {...props} />

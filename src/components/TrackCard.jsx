@@ -10,7 +10,7 @@ import {
 import { GlassDropdownMenuContent } from "@/components/ui/glasscn/glass-dropdown-menu";
 
 const DEFAULT_COVER =
-  "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&q=80&w=300";
+  "https://cdn.saleminteractivemedia.com/shared/images/default-cover-art.png";
 
 export default function TrackCard({
   track,

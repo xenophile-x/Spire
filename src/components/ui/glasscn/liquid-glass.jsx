@@ -194,11 +194,14 @@ export const LiquidGlass = forwardRef(function LiquidGlass(
     <>
       <div
         ref={setRefs}
-        className={cn("relative overflow-hidden rounded-full bg-white/[0.08]", className)}
+        className={cn("relative overflow-hidden rounded-full bg-white/[0.12]", className)}
         style={{
           ...style,
           backdropFilter,
-          WebkitBackdropFilter: backdropFilter
+          WebkitBackdropFilter: backdropFilter,
+          transform: style?.transform ?? "translateZ(0)",
+          willChange: "backdrop-filter, transform",
+          backfaceVisibility: "hidden",
         }}
         {...props}>
         {children}
@@ -228,10 +231,10 @@ export const LiquidGlass = forwardRef(function LiquidGlass(
         <svg className="absolute size-0 overflow-hidden" aria-hidden>
           <filter
             id={filterId}
-            x="0"
-            y="0"
-            width="100%"
-            height="100%"
+            x="-12%"
+            y="-12%"
+            width="124%"
+            height="124%"
             colorInterpolationFilters="sRGB">
             <feImage
               href={mapUrl}
@@ -248,7 +251,6 @@ export const LiquidGlass = forwardRef(function LiquidGlass(
               xChannelSelector="R"
               yChannelSelector="G"
               result="displaced" />
-            <feGaussianBlur in="displaced" stdDeviation="0.15" />
           </filter>
         </svg>
       )}
