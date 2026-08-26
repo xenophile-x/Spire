@@ -16,15 +16,7 @@ export default function GlassSearchBar({
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
 
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (searchRef.current && !searchRef.current.contains(e.target)) {
-
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  useEffect(() => () => clearTimeout(debounceRef.current), []);
 
   const handleChange = (e) => {
     const value = e.target.value;
@@ -38,6 +30,7 @@ export default function GlassSearchBar({
 
   const handleClear = (e) => {
     e.stopPropagation();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     setQuery("");
     onSearch("");
   };
@@ -48,7 +41,7 @@ export default function GlassSearchBar({
         blur={12}
         refraction={14}
         saturation={1.45}
-        className="flex h-16 items-center justify-between gap-3 rounded-full px-4 border border-white/20 [--liquid-glass-rim-light:rgba(255,255,255,0.6)] [--liquid-glass-rim-width:1px]"
+        className="flex h-16 items-center justify-between gap-3 rounded-full px-4 border border-white/20 glass-rim-bright"
       >
         <div className="flex items-center gap-2.5 shrink-0">
           <GlassIcon

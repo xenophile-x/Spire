@@ -1,6 +1,7 @@
 import { uploadToGoogleDrive } from "./driveService";
 import { registerTrackInSupabase } from "./supabaseService";
 import { matchItunesMetadata, cleanTrackTitle } from "./itunesService";
+import { fetchSongCover } from "../utils/fetchMetadata";
 import { fetchLyrics } from "./lyricsService";
 
 function getAudioFileDuration(file) {
@@ -41,8 +42,8 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
   const itunesData = await matchItunesMetadata(fileNameStr);
 
   let trackInfo;
-  // NOTE: itunesTrackId is kept only as external reference metadata now —
-  // it is NEVER used as a Supabase primary key. See registerTrackInSupabase.
+
+
   let itunesTrackId = null;
 
   if (itunesData) {
@@ -58,17 +59,30 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
         localDurationSeconds || Math.round(itunesData.trackTimeMillis / 1000),
     };
   } else {
-    const cleaned = cleanTrackTitle(fileNameStr);
-    const parts = cleaned.split("-");
+
+
+    const baseName = fileNameStr.replace(/\.[^/.]+$/, "");
+    const segments = baseName.split(/\s*[-_]\s+/);
+    const cleanedSegments = segments.map((s) => cleanTrackTitle(s)).filter(Boolean);
     trackInfo = {
-      title: String((parts[1] || parts[0] || "Unknown Track").trim()),
-      artist: String((parts[1] ? parts[0] : "Unknown Artist").trim()),
+      title: String((cleanedSegments[1] || cleanedSegments[0] || "Unknown Track").trim()),
+      artist: String((cleanedSegments[1] ? cleanedSegments[0] : "Unknown Artist").trim()),
       album: "Uploaded Single",
       artworkUrl: fallbackImg,
       artistPhotoUrl: fallbackImg,
       primaryGenre: "Music",
       durationSeconds: localDurationSeconds || 0,
     };
+  }
+
+  // Same chain the lazy backfill uses — gives Deezer/JioSaavn a shot when
+  // iTunes had no artwork instead of settling for the default cover.
+  if (trackInfo.artworkUrl === fallbackImg && trackInfo.artist !== "Unknown Artist") {
+    const rescuedCover = await fetchSongCover(trackInfo.title, trackInfo.artist);
+    if (rescuedCover && rescuedCover !== fallbackImg) {
+      trackInfo.artworkUrl = rescuedCover;
+      trackInfo.artistPhotoUrl = rescuedCover;
+    }
   }
 
   onProgress?.({ step: 2, percent: 40, message: "Searching for lyrics on LRCLIB..." });
@@ -103,7 +117,7 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
       filename: fileNameStr,
       trackInfo,
       lyricsData,
-      itunesTrackId, // passed through as reference metadata only, NOT as the row PK
+      itunesTrackId,
     });
   } catch (err) {
     console.error("SUPABASE REGISTRATION ERROR:", err);

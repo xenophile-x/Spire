@@ -1,5 +1,5 @@
-// src/components/MusicBar.jsx
-import React, { useRef } from "react";
+
+import React, { useRef, useState, useEffect } from "react";
 import "material-symbols/rounded.css";
 import { DEFAULT_COVER } from "@/utils/trackMetadata";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
@@ -11,8 +11,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { GlassDropdownMenuContent } from "@/components/ui/glasscn/glass-dropdown-menu";
 import { useRadioStation } from "@/hooks/useRadioStation";
+import { usePlayerTime } from "@/context/PlayerContext";
+import RadioStationDropdown from "@/components/RadioStationDropdown";
+import { formatTime } from "@/utils/formatters";
 import { formatFrequency } from "@/constants/radioStations";
 import { cn } from "@/lib/utils";
+import { resolveTrackCover } from "@/services/metadataService";
 
 const SIZES = {
   shuffleRepeat: { btnSize: 26, iconSize: 18 },
@@ -22,34 +26,19 @@ const SIZES = {
   utility:       { btnSize: 30, iconSize: 20 },
 };
 
-export function parseLRC(lrcString) {
-  if (!lrcString || typeof lrcString !== "string") return [];
-  const lines = lrcString.split("\n");
-  const result = [];
-  const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
+const SPATIAL_EFFECTS = [
+  { icon: "spatial_speaker", activeKey: "is8DActive", toggleKey: "toggle8D", label: "8D Audio" },
+  { icon: "stadium", activeKey: "isReverbActive", toggleKey: "toggleReverb", label: "Concert Hall" },
+  { icon: "cadence", activeKey: "isNightcoreActive", toggleKey: "toggleNightcore", label: "Nightcore" },
+];
 
-  for (const line of lines) {
-    const match = timeRegex.exec(line);
-    if (match) {
-      const minutes = parseInt(match[1], 10);
-      const seconds = parseInt(match[2], 10);
-      const millis = parseInt(match[3].padEnd(3, "0"), 10);
-      const time = minutes * 60 + seconds + millis / 1000;
-      const text = line.replace(timeRegex, "").trim();
-      if (text) {
-        result.push({ time, text });
-      }
-    }
-  }
-
-  return result.sort((a, b) => a.time - b.time);
-}
-
-function IconButton({ icon, size, onClick, active = false, filled = true, className = "" }) {
+function IconButton({ icon, size, onClick, active = false, filled = true, className = "", title }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      title={title}
+      aria-label={title}
       style={{ width: `${size.btnSize}px`, height: `${size.btnSize}px` }}
       className={cn(
         "cursor-pointer rounded-full p-0 flex items-center justify-center shrink-0 transition-all active:scale-95 border-0 bg-transparent focus:outline-none",
@@ -90,70 +79,10 @@ function VinylDisc({ src, alt }) {
   );
 }
 
-function formatTime(seconds = 0) {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
-}
-
-function RadioStationDropdown({ stations, selectedStation, isRadioMode, onSelectStation, onStopRadio, trigger }) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuPortal>
-        <GlassDropdownMenuContent
-          glassVariant="frosted"
-          align="end"
-          sideOffset={8}
-          className="w-64 max-h-80 overflow-y-auto"
-        >
-          <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-white/50">
-            Radio Stations
-          </div>
-          {stations.map((station) => {
-            const isActive = isRadioMode && selectedStation?.id === station.id;
-            return (
-              <DropdownMenuItem
-                key={station.id}
-                onClick={() => onSelectStation(station)}
-                className={cn("flex items-center justify-between gap-3", isActive && "bg-white/15")}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm font-mono font-bold text-white tabular-nums w-12 shrink-0">
-                    {formatFrequency(station.frequency)}
-                  </span>
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-medium text-white truncate">{station.name}</span>
-                    {station.genre && (
-                      <span className="text-[10px] text-white/50 truncate">{station.genre}</span>
-                    )}
-                  </div>
-                </div>
-                {isActive && (
-                  <span className="material-symbols-rounded text-sm text-white shrink-0">check</span>
-                )}
-              </DropdownMenuItem>
-            );
-          })}
-          {isRadioMode && (
-            <>
-              <div className="my-1 h-px bg-white/10" />
-              <DropdownMenuItem onClick={onStopRadio} className="text-red-300">
-                <span className="text-xs font-medium">Stop Radio</span>
-              </DropdownMenuItem>
-            </>
-          )}
-        </GlassDropdownMenuContent>
-      </DropdownMenuPortal>
-    </DropdownMenu>
-  );
-}
-
 export default function MusicBar({
   activeTrack,
   isPlaying,
   onTogglePlay,
-  currentTime = 0,
   duration = 0,
   volume = 70,
   setVolume,
@@ -173,8 +102,25 @@ export default function MusicBar({
   onOpenLyrics,
   playlists = [],
   onAddToPlaylist,
+  spatialAudio = null,
 }) {
+
+  const { currentTime } = usePlayerTime();
   const prevVolumeRef = useRef(70);
+  const [spatialHovered, setSpatialHovered] = useState(false);
+  const [scrubTime, setScrubTime] = useState(null);
+  const [coverUrl, setCoverUrl] = useState(activeTrack?.cover_url || activeTrack?.artwork_url || activeTrack?.cover || DEFAULT_COVER);
+
+  const displayTime = scrubTime ?? currentTime;
+
+  const commitScrub = () => {
+    if (scrubTime != null) {
+      onSeek?.(scrubTime);
+      setScrubTime(null);
+    }
+  };
+
+  const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
 
   const { stations, selectedStation, selectStation } = useRadioStation();
 
@@ -182,6 +128,17 @@ export default function MusicBar({
     selectStation(station);
     onStationChange?.(station);
   };
+
+  useEffect(() => {
+    if (!activeTrack) return;
+
+    resolveTrackCover(
+      activeTrack.id,
+      activeTrack.title,
+      activeTrack.artist,
+      activeTrack.cover_url || activeTrack.artwork_url || activeTrack.cover
+    ).then(setCoverUrl);
+  }, [activeTrack]);
 
   const handleMuteToggle = () => {
     if (volume > 0) {
@@ -199,14 +156,8 @@ export default function MusicBar({
     return "volume_up";
   };
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
-
   const title = activeTrack?.title || activeTrack?.canonical_title || "No Track Playing";
   const artist = activeTrack?.artist || activeTrack?.canonical_artist || "Select a song";
-  const artwork =
-    activeTrack?.cover ||
-    activeTrack?.artworkUrl ||
-    activeTrack?.artwork_url;
 
   return (
     <div className="flex flex-col items-center justify-center select-none font-sans relative w-full max-w-2xl mx-auto p-1">
@@ -214,15 +165,15 @@ export default function MusicBar({
         blur={12}
         refraction={14}
         saturation={1.45}
-        className="flex h-16 w-full items-center justify-between gap-2 sm:gap-3 rounded-full px-3 sm:px-4 border border-white/20 [--liquid-glass-rim-light:rgba(255,255,255,0.6)] [--liquid-glass-rim-width:1px]"
+        className="flex h-16 w-full items-center justify-between gap-2 sm:gap-3 rounded-full px-3 sm:px-4 border border-white/20 glass-rim-bright"
       >
-        {/* ===== Mobile layout ===== */}
+
         <div className="sm:hidden flex w-full items-center justify-between gap-1.5">
           <div
             className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
             onClick={onOpenExpandedView}
           >
-            <VinylDisc src={artwork} alt={title} />
+            <VinylDisc src={coverUrl} alt={title} />
             <div className="flex flex-col min-w-0 justify-center leading-tight">
               <span className="text-xs font-semibold truncate text-white/90">{title}</span>
               <span className="text-[10px] text-white/60 truncate">{artist}</span>
@@ -262,7 +213,7 @@ export default function MusicBar({
                     size={SIZES.utility}
                     active={isRadioMode}
                     className={cn(!isRadioMode ? "text-white/60 hover:text-white" : "text-white")}
-                    title={isRadioMode ? selectedStation.name : "Start Radio"}
+                    title={isRadioMode ? selectedStation?.name : "Start Radio"}
                   />
                 </div>
               }
@@ -270,9 +221,9 @@ export default function MusicBar({
           </div>
         </div>
 
-        {/* ===== Desktop layout ===== */}
+
         <div className="hidden sm:flex w-full items-center justify-between gap-3">
-        {/* Left Playback Controls */}
+
         <div className="flex items-center gap-1 shrink-0">
           {isRadioMode ? (
             <>
@@ -313,7 +264,7 @@ export default function MusicBar({
           )}
         </div>
 
-        {/* Center Track Capsule */}
+
         <LiquidGlass
           blur={4}
           refraction={6}
@@ -323,7 +274,7 @@ export default function MusicBar({
           className="relative flex h-12 max-w-lg flex-1 items-center justify-between overflow-hidden rounded-full px-3 border border-white/10 shadow-inner cursor-pointer [--liquid-glass-rim-width:0.5px]"
         >
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <VinylDisc src={artwork} alt={title} />
+            <VinylDisc src={coverUrl} alt={title} />
 
             <div className="flex flex-col min-w-0 flex-1 justify-center leading-tight">
               <span className="text-xs font-semibold truncate text-white/90">{title}</span>
@@ -345,7 +296,7 @@ export default function MusicBar({
               </LiquidGlass>
             ) : (
               <span className="hidden sm:block text-[10px] font-mono text-white/50 shrink-0">
-                {formatTime(currentTime)}
+                {formatTime(displayTime)}
               </span>
             )}
 
@@ -362,7 +313,7 @@ export default function MusicBar({
             />
           </div>
 
-          {/* Progress Bar (desktop: inside capsule) */}
+
           <div className={`hidden sm:block absolute bottom-0 left-0 right-0 h-5 ${isRadioMode ? "pointer-events-none" : "cursor-pointer pointer-events-auto"}`}>
             <div
               className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none"
@@ -377,10 +328,11 @@ export default function MusicBar({
                 type="range"
                 min="0"
                 max={duration || 100}
-                value={currentTime}
-                onChange={(e) => {
-                  if (onSeek) onSeek(Number(e.target.value));
-                }}
+                value={displayTime}
+                onChange={(e) => setScrubTime(Number(e.target.value))}
+                onPointerUp={commitScrub}
+                onKeyUp={commitScrub}
+                onBlur={commitScrub}
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
@@ -389,17 +341,28 @@ export default function MusicBar({
           </div>
         </LiquidGlass>
 
-        {/* Right Utility Controls */}
+
         <div className="flex items-center gap-1 text-white/70 shrink-0">
-          {activeTrack && (
-            <IconButton
-              icon="lyrics"
-              size={SIZES.utility}
-              onClick={onOpenLyrics || onOpenExpandedView}
-              className="text-white/60 hover:text-white"
-            />
-          )}
-          {activeTrack && onAddToPlaylist && (
+          <div
+            className={`overflow-hidden transition-all duration-300 ${
+              spatialHovered ? "w-0 opacity-0 pointer-events-none" : "w-auto opacity-100"
+            }`}
+          >
+            {activeTrack && (
+              <IconButton
+                icon="lyrics"
+                size={SIZES.utility}
+                onClick={onOpenLyrics || onOpenExpandedView}
+                className="text-white/60 hover:text-white"
+              />
+            )}
+          </div>
+          <div
+            className={`overflow-hidden transition-all duration-300 ${
+              spatialHovered ? "w-0 opacity-0 pointer-events-none" : "w-auto opacity-100"
+            }`}
+          >
+            {activeTrack && onAddToPlaylist && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <div>
@@ -422,7 +385,7 @@ export default function MusicBar({
                     playlists.map((pl, index) => (
                       <DropdownMenuItem
                         key={`${pl.id}-${index}`}
-                        onClick={() => onAddToPlaylist(pl.id, activeTrack.id)}
+                        onClick={() => activeTrack && onAddToPlaylist(pl.id, activeTrack.id)}
                       >
                         <span className="text-white text-xs truncate">{pl.title}</span>
                       </DropdownMenuItem>
@@ -436,6 +399,7 @@ export default function MusicBar({
               </DropdownMenuPortal>
             </DropdownMenu>
           )}
+          </div>
           <RadioStationDropdown
             stations={stations}
             selectedStation={selectedStation}
@@ -455,12 +419,50 @@ export default function MusicBar({
             }
           />
 
-          {/* Volume Expansion */}
+
+          {spatialAudio && (
+            <div
+              className="flex items-center group relative"
+              onMouseEnter={() => setSpatialHovered(true)}
+              onMouseLeave={() => setSpatialHovered(false)}
+            >
+              <IconButton
+                icon="arrow_menu_open"
+                size={SIZES.utility}
+                active={
+                  spatialAudio.is8DActive ||
+                  spatialAudio.isReverbActive ||
+                  spatialAudio.isNightcoreActive
+                }
+                onClick={() => {
+                  if (spatialAudio.is8DActive) spatialAudio.toggle8D();
+                  else if (spatialAudio.isReverbActive) spatialAudio.toggleReverb();
+                  else if (spatialAudio.isNightcoreActive) spatialAudio.toggleNightcore();
+                  else spatialAudio.toggle8D();
+                }}
+                title="Spatial audio"
+              />
+              <div className="hidden sm:flex w-0 opacity-0 group-hover:w-auto group-hover:opacity-100 transition-all duration-300 ease-in-out overflow-hidden items-center ml-0 group-hover:ml-1">
+                {SPATIAL_EFFECTS.map((effect) => (
+                  <IconButton
+                    key={effect.icon}
+                    icon={effect.icon}
+                    size={SIZES.utility}
+                    active={spatialAudio[effect.activeKey]}
+                    onClick={spatialAudio[effect.toggleKey]}
+                    title={`${effect.label}: ${spatialAudio[effect.activeKey] ? "ON" : "OFF"}`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+
           <div className="hidden sm:flex items-center group relative">
-            <IconButton 
-              icon={getVolumeIcon()} 
-              size={SIZES.utility} 
-              onClick={handleMuteToggle} 
+            <IconButton
+              icon={getVolumeIcon()}
+              size={SIZES.utility}
+              onClick={handleMuteToggle}
               className="text-white/60 hover:text-white group-hover:text-white"
             />
             <div className="w-0 opacity-0 group-hover:w-20 group-hover:opacity-100 transition-all duration-300 ease-in-out overflow-hidden flex items-center ml-0 group-hover:ml-1 relative h-4">
@@ -485,7 +487,7 @@ export default function MusicBar({
         </div>
       </LiquidGlass>
 
-      {/* Mobile timeline row */}
+
       <div className="sm:hidden mt-1.5 w-full flex items-center gap-2 px-1">
         {isRadioMode ? (
           <span className="text-[9px] font-bold tracking-wide text-white/80 shrink-0 font-mono">
@@ -493,7 +495,7 @@ export default function MusicBar({
           </span>
         ) : (
           <span className="text-[10px] font-mono text-white/50 shrink-0 w-9 text-right tabular-nums">
-            {formatTime(currentTime)}
+            {formatTime(displayTime)}
           </span>
         )}
         <div className={`relative flex-1 h-6 ${isRadioMode ? "pointer-events-none" : "cursor-pointer"}`}>
@@ -510,10 +512,11 @@ export default function MusicBar({
               type="range"
               min="0"
               max={duration || 100}
-              value={currentTime}
-              onChange={(e) => {
-                if (onSeek) onSeek(Number(e.target.value));
-              }}
+              value={displayTime}
+              onChange={(e) => setScrubTime(Number(e.target.value))}
+              onPointerUp={commitScrub}
+              onKeyUp={commitScrub}
+              onBlur={commitScrub}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer [touch-action:none]"
             />
           )}

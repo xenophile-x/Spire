@@ -1,4 +1,4 @@
-// supabase/functions/refresh-google-token/index.ts
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Verify the caller's identity using their Supabase JWT
+
     const callerClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Service-role client bypasses RLS — needed to read/write the token row
+
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { data: tokenRow, error: fetchError } = await adminClient

@@ -1,5 +1,3 @@
-
-
 import React, { useEffect } from "react";
 import "material-symbols/rounded.css";
 import { GlassCard } from "@/components/ui/glasscn/glass-card";
@@ -7,12 +5,20 @@ import { GlassProgress } from "@/components/ui/glasscn/glass-progress";
 import { GlassButton } from "@/components/ui/glasscn/glass-button";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
 
+const STEP_LABELS = {
+  1: "Matching metadata…",
+  2: "Finding lyrics…",
+  3: "Uploading to Drive…",
+  4: "Saving to library…",
+};
+
 export default function UploadModal({
   isOpen,
   onClose,
-  file,
+  queue = [],
+  currentIndex = 0,
   currentStep = 1,
-  uploadProgress = 0,
+  uploadProgress: _uploadProgress = 0,
   errorMessage,
 }) {
   useEffect(() => {
@@ -29,12 +35,35 @@ export default function UploadModal({
 
   if (!isOpen) return null;
 
-  const isComplete = currentStep >= 4 || uploadProgress >= 100;
-  const clampedProgress = Math.min(100, Math.max(0, uploadProgress));
+  const total = queue.length;
+  const doneCount = queue.filter((f) => f.status === "done").length;
+  const errorCount = queue.filter((f) => f.status === "error").length;
+  const isComplete = total > 0 && doneCount + errorCount === total;
+  const aggregatePercent = total
+    ? Math.round(queue.reduce((sum, f) => sum + f.percent, 0) / total)
+    : 0;
+  const clampedProgress = Math.min(100, Math.max(0, aggregatePercent));
+
+  const statusMeta = (entry) => {
+    switch (entry.status) {
+      case "done":
+        return { icon: "", color: "", label: "Done" };
+      case "error":
+        return { icon: "error", color: "text-red-300", label: entry.error || "Failed" };
+      case "processing":
+        return {
+          icon: "sync",
+          color: "text-white",
+          label: `${Math.round(entry.percent)}% · ${STEP_LABELS[currentStep] || "Processing…"}`,
+        };
+      default:
+        return { icon: "schedule", color: "text-white/40", label: "Queued" };
+    }
+  };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center  p-4 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
@@ -62,45 +91,93 @@ export default function UploadModal({
             >
               cloud_upload
             </span>
-            <h3 id="upload-modal-title" className="text-lg font-bold tracking-tight text-white">
-              {isComplete ? "Upload Complete" : "Uploading Track"}
-            </h3>
+            <div>
+              <h3 id="upload-modal-title" className="text-lg font-bold tracking-tight text-white">
+                {isComplete
+                  ? "Upload Complete"
+                  : total > 1
+                    ? "Uploading Tracks"
+                    : "Uploading Track"}
+              </h3>
+              <p className="text-[10px] font-medium text-white/60">
+                {isComplete
+                  ? `${doneCount} uploaded${errorCount ? ` · ${errorCount} failed` : ""}`
+                  : total > 1
+                    ? `Song ${Math.min(currentIndex + 1, total)} of ${total}`
+                    : "One song at a time"}
+              </p>
+            </div>
           </div>
 
           <button
             onClick={onClose}
             aria-label="Close modal"
-            className="cursor-pointer rounded-full p-1.5 text-white/70 transition-all  hover:text-white"
+            className="cursor-pointer rounded-full p-1.5 text-white/70 transition-all hover:text-white"
           >
             <span className="material-symbols-rounded block text-xl">close</span>
           </button>
         </div>
 
         <div className="space-y-4">
-          {file && (
-            <LiquidGlass
-              blur={6}
-              refraction={6}
-              saturation={1.2}
-              className="rounded-xl p-3.5 [--liquid-glass-rim-width:0.5px]"
-            >
-              <div className="flex items-center gap-3.5">
-                <LiquidGlass
-                  blur={4}
-                  refraction={4}
-                  saturation={1.2}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg [--liquid-glass-rim-width:0.5px]"
-                >
-                  <span className="material-symbols-rounded text-xl text-white">audio_file</span>
-                </LiquidGlass>
-                <div className="min-w-0 flex-1 space-y-0.5 overflow-hidden">
-                  <p className="truncate text-xs leading-snug font-semibold text-white">{file.name}</p>
-                  <p className="text-[10px] font-medium text-white/60">
-                    {(file.size / (1024 * 1024)).toFixed(2)} MB
-                  </p>
-                </div>
-              </div>
-            </LiquidGlass>
+          {queue.length > 0 && (
+            <div className="max-h-52 space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+              {queue.map((entry, i) => {
+                const meta = statusMeta(entry);
+                const isActive = i === currentIndex && !isComplete;
+                return (
+                  <LiquidGlass
+                    key={`${entry.name}-${i}`}
+                    blur={6}
+                    refraction={6}
+                    saturation={1.2}
+                    className={`rounded-xl p-3 [--liquid-glass-rim-width:0.5px] transition-all ${
+                      isActive ? "ring-1 ring-white/30" : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <LiquidGlass
+                        blur={4}
+                        refraction={4}
+                        saturation={1.2}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg [--liquid-glass-rim-width:0.5px]"
+                      >
+                        <span className="material-symbols-rounded text-lg text-white">
+                          audio_file
+                        </span>
+                      </LiquidGlass>
+                      <div className="min-w-0 flex-1 space-y-0.5 overflow-hidden">
+                        <p className="truncate text-xs font-semibold leading-snug text-white">
+                          {entry.name}
+                        </p>
+                        <p className="text-[10px] font-medium text-white/60">
+                          {(entry.size / (1024 * 1024)).toFixed(2)} MB
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {meta.icon && (
+                          <span
+                            className={`material-symbols-rounded text-sm ${meta.color} ${
+                              entry.status === "processing" ? "animate-spin" : ""
+                            }`}
+                          >
+                            {meta.icon}
+                          </span>
+                        )}
+                        <span
+                          className={`max-w-28 truncate text-[10px] font-medium ${
+                            entry.status === "error" ? "text-red-300" : "text-white/60"
+                          }`}
+                        >
+                          {entry.status === "processing"
+                            ? `${Math.round(entry.percent)}%`
+                            : meta.label}
+                        </span>
+                      </div>
+                    </div>
+                  </LiquidGlass>
+                );
+              })}
+            </div>
           )}
 
           {errorMessage && (
@@ -113,7 +190,11 @@ export default function UploadModal({
           <div className="space-y-2 pt-1">
             <div className="flex items-center justify-between text-xs text-white/80">
               <span className="font-medium">
-                {isComplete ? "Processing finished" : "Uploading..."}
+                {isComplete
+                  ? "Processing finished"
+                  : total > 1
+                    ? `${doneCount + errorCount + (queue[currentIndex]?.status === "processing" ? 1 : 0)} of ${total} processed`
+                    : "Uploading..."}
               </span>
               <span className="font-mono text-xs text-white/90">{Math.round(clampedProgress)}%</span>
             </div>
@@ -126,7 +207,7 @@ export default function UploadModal({
           {isComplete ? (
             <button
               onClick={onClose}
-              className="w-full cursor-pointer rounded-xl border border-white/20 bg-white/10 py-2.5 text-xs font-semibold text-white hover:bg-white/20 transition-all"
+              className="w-full cursor-pointer rounded-xl border border-white/20 bg-white/10 py-2.5 text-xs font-semibold text-white transition-all hover:bg-white/20"
             >
               Done
             </button>
@@ -135,7 +216,7 @@ export default function UploadModal({
               onClick={onClose}
               glassVariant="liquid-refract"
               className="w-full rounded-xl py-2.5 text-xs font-semibold text-white"
-              style={{ color: '#ffffff' }}
+              style={{ color: "#ffffff" }}
             >
               Cancel Upload
             </GlassButton>
@@ -145,4 +226,3 @@ export default function UploadModal({
     </div>
   );
 }
-

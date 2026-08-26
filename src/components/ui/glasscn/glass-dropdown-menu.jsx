@@ -66,7 +66,7 @@ function GlassDropdownMenuContent({
       alignOffset={alignOffset}
       className={cn(
         glassVariantStyles[glassVariant],
-        "border border-white/10 bg-black/55 text-white shadow-2xl ring-1 ring-white/10",
+        "border border-white/10 bg-white/5 text-white shadow-2xl ring-1 ring-white/10",
         menuStateStyles,
         className
       )}

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { ListPlus, Plus, ChevronLeft, Trash2, Play, MoreHorizontal, Pencil, X, Check } from "lucide-react";
+import { ListPlus, Plus, ChevronLeft, Trash2, Play, Pause, MoreHorizontal, Pencil, X, Check, Shuffle, Clock } from "lucide-react";
 import "material-symbols/rounded.css";
-import { GlassIcon } from "@/components/ui/glasscn/glass-icon";
 import { GlassCard } from "@/components/ui/glasscn/glass-card";
 import { GlassButton } from "@/components/ui/glasscn/glass-button";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
@@ -13,6 +12,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { GlassDropdownMenuContent } from "@/components/ui/glasscn/glass-dropdown-menu";
+import PlaylistPoster, { gradientForTitle } from "@/components/PlaylistPoster";
 import { cn } from "@/lib/utils";
 
 const CONTENT_WRAP_CLASS = "w-full space-y-8 pb-12";
@@ -22,26 +22,12 @@ const isProtectedPlaylist = (pl) =>
     pl &&
       (pl.id === "1" ||
         pl.isFavorite === true ||
+        pl.isSmartPlaylist === true ||
         pl.isRecommended === true ||
         pl.isGenrePlaylist === true)
   );
 
 const isRecommendedPlaylist = (pl) => Boolean(pl && pl.id === "recommended");
-
-function GlassCoverFallback({ title }) {
-  return (
-    <LiquidGlass
-      blur={10}
-      refraction={12}
-      saturation={1.35}
-      className="flex h-full w-full items-center justify-center rounded-2xl [--liquid-glass-rim-width:0.5px]"
-    >
-      <span className="px-3 text-center text-sm font-semibold tracking-tight text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.4)]">
-        {title}
-      </span>
-    </LiquidGlass>
-  );
-}
 
 function DialogShell({ open, onClose, children, maxWidth = "max-w-md" }) {
   const [rendered, setRendered] = useState(false);
@@ -154,7 +140,7 @@ function PlaylistNameDialog({ open, title, icon, initialValue = "", submitLabel,
           blur={6}
           refraction={6}
           saturation={1.2}
-          className="rounded-xl p-3.5 [--liquid-glass-rim-width:0.5px]"
+          className="rounded-xl p-2 [--liquid-glass-rim-width:0.5px]"
         >
           <input
             type="text"
@@ -164,7 +150,7 @@ function PlaylistNameDialog({ open, title, icon, initialValue = "", submitLabel,
               if (e.key === "Enter") handleSubmit();
             }}
             placeholder="Playlist name"
-            className="w-full rounded-lg bg-transparent px-1 py-1 text-sm text-white outline-none placeholder-white/50"
+            className="w-full rounded-lg bg-transparent px-1 py-0.5 text-sm text-white outline-none placeholder-white/50"
             autoFocus
           />
         </LiquidGlass>
@@ -175,7 +161,7 @@ function PlaylistNameDialog({ open, title, icon, initialValue = "", submitLabel,
           onClick={handleSubmit}
           disabled={!name.trim()}
           glassVariant="liquid-refract"
-          className="w-full rounded-xl py-2.5 text-xs font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-full h-9 rounded-xl text-xs font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {submitLabel}
         </GlassButton>
@@ -184,7 +170,7 @@ function PlaylistNameDialog({ open, title, icon, initialValue = "", submitLabel,
   );
 }
 
-function ConfirmDialog({ open, icon = "delete", title, message, confirmLabel = "Delete", danger = true, onConfirm, onCancel }) {
+function ConfirmDialog({ open, icon = "delete", title, message, confirmLabel = "Delete", onConfirm, onCancel }) {
   const [busy, setBusy] = useState(false);
 
   const handleConfirm = async () => {
@@ -206,7 +192,7 @@ function ConfirmDialog({ open, icon = "delete", title, message, confirmLabel = "
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="flex-1 cursor-pointer rounded-xl border border-white/20 bg-white/10 py-2.5 text-xs font-semibold text-white hover:bg-white/20 transition-all disabled:opacity-50"
+            className="flex-1 h-9 cursor-pointer rounded-xl border border-white/20 bg-white/10 text-xs font-semibold text-white hover:bg-white/20 transition-all disabled:opacity-50"
           >
             Cancel
           </button>
@@ -214,7 +200,7 @@ function ConfirmDialog({ open, icon = "delete", title, message, confirmLabel = "
             onClick={handleConfirm}
             disabled={busy}
             glassVariant="liquid-refract"
-            className={`flex-1 rounded-xl py-2.5 text-xs font-semibold ${danger ? "text-red-300" : "text-white"} disabled:opacity-50`}
+            className="flex-1 h-9 rounded-xl text-xs font-semibold text-white transition-all hover:bg-white/20 disabled:opacity-50"
           >
             {busy ? "Deleting..." : confirmLabel}
           </GlassButton>
@@ -227,6 +213,9 @@ function ConfirmDialog({ open, icon = "delete", title, message, confirmLabel = "
 export default function PlaylistsView({
   playlists = [],
   userTracks = [],
+  activeTrack = null,
+  isPlaying = false,
+  onTogglePlay = () => {},
   onPlayTrack = () => {},
   onPlaylistPlay = () => {},
   onCreatePlaylist = () => {},
@@ -251,6 +240,9 @@ export default function PlaylistsView({
     ...genrePlaylists,
     ...playlists.filter((pl) => pl.isFavorite !== true),
   ];
+
+  const userPlaylists = displayPlaylists.filter((pl) => !pl.isGenrePlaylist);
+  const genreList = displayPlaylists.filter((pl) => pl.isGenrePlaylist);
 
   const openCreate = () => {
     setIsCreateOpen(true);
@@ -280,12 +272,28 @@ export default function PlaylistsView({
       .map((id) => userTracks.find((t) => t.id === id))
       .filter(Boolean);
     if (tracks.length > 0) {
-      onPlaylistPlay?.(playlist.id, tracks[0]);
+      onPlaylistPlay?.(playlist.id, tracks[0], tracks);
+    }
+  };
+
+  const handlePlayAllFull = (playlist) => {
+    if (!playlist.songIds || playlist.songIds.length === 0 || !onPlayTrack) return;
+    const tracks = playlist.songIds
+      .map((id) => userTracks.find((t) => t.id === id))
+      .filter(Boolean);
+    if (tracks.length > 0) {
+      onPlaylistPlay?.(playlist.id, tracks[0], tracks);
     }
   };
 
   const toggleSelection = (playlistId) => {
-    const pl = playlists.find((p) => p.id === playlistId);
+
+
+    const pl =
+      playlists.find((p) => p.id === playlistId) ||
+      (recommendedPlaylist?.id === playlistId ? recommendedPlaylist : null) ||
+      genrePlaylists.find((p) => p.id === playlistId) ||
+      null;
     if (pl && isProtectedPlaylist(pl)) return;
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -349,11 +357,6 @@ export default function PlaylistsView({
     openRename(playlist);
   };
 
-  const getPlaylistImage = (playlist) => {
-    if (playlist.image) return playlist.image;
-    return null;
-  };
-
   const activePlaylist = displayPlaylists.find((pl) => pl.id === activePlaylistId);
 
   const playlistTracks = React.useMemo(() => {
@@ -374,151 +377,265 @@ export default function PlaylistsView({
 
   const selectedCount = selectedIds.size;
 
+
+  const isPlaylistTrackActive =
+    isPlaying &&
+    Boolean(
+      activeTrack && (activePlaylist?.songIds || []).includes(activeTrack.id)
+    );
+
+  const formatTrackDuration = (seconds) => {
+    if (!seconds || seconds <= 0) return "—";
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const heroGradient =
+    activePlaylist?.id === "1"
+      ? { name: "Playing with Reds", colors: ["#D31027", "#EA384D"] }
+      : gradientForTitle(activePlaylist?.title || "");
+
+  const totalMinutes = Math.max(
+    1,
+    Math.round(
+      playlistTracks.reduce((sum, t) => sum + (t.duration_seconds || t.duration || 0), 0) /
+        60
+    )
+  );
+
+  const playShuffled = () => {
+    if (playlistTracks.length === 0 || !onPlaylistPlay) return;
+    const shuffled = [...playlistTracks];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    onPlaylistPlay(activePlaylist.id, shuffled[0], shuffled);
+  };
+
+
   if (activePlaylist) {
     return (
       <div className="w-full text-white font-sans antialiased selection:bg-white selection:text-white">
-        <div className="mx-auto max-w-5xl space-y-8 pb-12">
-          {/* Top bar */}
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <GlassIcon
-                size="sm"
-                onClick={() => setActivePlaylistId(null)}
-                aria-label="Back to playlists"
-                className="text-white cursor-pointer"
-                liquidProps={{ blur: 6, refraction: 8 }}
+        <div className="w-full space-y-8 pb-12">
+          <div className="mx-auto max-w-5xl px-8 pt-8">
+
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <LiquidGlass
+              blur={10}
+              refraction={18}
+              saturation={1.6}
+              onClick={() => setActivePlaylistId(null)}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-xs font-medium text-white/70 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] transition-all hover:bg-white/25 hover:text-white hover:scale-105 shadow-lg shadow-black/10"
+            >
+              <ChevronLeft className="h-4 w-4 stroke-[2.5]" />
+              Back to Library
+            </LiquidGlass>
+
+            {isRecommendedPlaylist(activePlaylist) && (
+              <LiquidGlass
+                blur={10}
+                refraction={18}
+                saturation={1.6}
+                onClick={onSaveRecommended}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-white/15 px-4 py-2 text-xs font-semibold text-white border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] transition-all hover:bg-white/25 hover:scale-105 shadow-lg shadow-black/10"
               >
-                <ChevronLeft className="h-5 w-5 stroke-[2.5]" />
-              </GlassIcon>
-              <div>
-                <h1 className="text-xl font-bold tracking-tight text-white">{activePlaylist.title}</h1>
-                <p className="text-xs font-medium text-white/50">
-                  {playlistTracks.length} {playlistTracks.length === 1 ? "track" : "tracks"}
+                <Plus className="h-4 w-4 stroke-[2.5]" />
+                Save to Library
+              </LiquidGlass>
+            )}
+
+            {!isProtectedPlaylist(activePlaylist) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <LiquidGlass
+                    blur={10}
+                    refraction={18}
+                    saturation={1.6}
+                    className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white/15 text-white/80 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] transition-all hover:bg-white/25 hover:text-white hover:scale-105 shadow-lg shadow-black/10"
+                  >
+                    <MoreHorizontal className="h-5 w-5" />
+                  </LiquidGlass>
+                </DropdownMenuTrigger>
+                <DropdownMenuPortal>
+                  <GlassDropdownMenuContent
+                    glassVariant="frosted"
+                    align="end"
+                    sideOffset={8}
+                    className="w-56"
+                  >
+                    <DropdownMenuItem onClick={() => handleRenamePlaylist(activePlaylist)}>
+                      <Pencil className="mr-2 h-4 w-4 text-white" />
+                      <span className="text-white">Rename</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleDeletePlaylist(activePlaylist.id)}>
+                      <Trash2 className="mr-2 h-4 w-4 text-white" />
+                      <span className="text-white">Delete Playlist</span>
+                    </DropdownMenuItem>
+                  </GlassDropdownMenuContent>
+                </DropdownMenuPortal>
+              </DropdownMenu>
+            )}
+          </div>
+
+
+          <div className="flex flex-col items-start gap-8 border-b border-white/10 pb-8 md:flex-row md:items-end">
+            <div className="h-52 w-52 shrink-0 overflow-hidden rounded-2xl shadow-2xl">
+              <PlaylistPoster
+                title={activePlaylist.title}
+                gradient={heroGradient}
+              />
+            </div>
+
+            <div className="flex flex-1 flex-col justify-end gap-3">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/85 drop-shadow-[0_1px_4px_rgba(0,0,0,0.7)]">
+                <span>Spire</span>
+              </div>
+
+              <h1 className="text-4xl font-black leading-[1.05] tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.6)] md:text-5xl">
+                {activePlaylist.title}
+              </h1>
+
+              {isRecommendedPlaylist(activePlaylist) && (
+                <p className="max-w-xl text-sm font-medium text-white/85 drop-shadow-[0_1px_4px_rgba(0,0,0,0.7)]">
+                  Picked from your listening taste · refreshes every 24 hours.
                 </p>
+              )}
+
+              <div className="flex items-center gap-5 pt-1 text-xs font-medium text-white/80 drop-shadow-[0_1px_4px_rgba(0,0,0,0.7)]">
+                <span>
+                  {playlistTracks.length} {playlistTracks.length === 1 ? "song" : "songs"}
+                </span>
+                <span>About {totalMinutes} min</span>
+              </div>
+
+
+              <div className="flex items-center gap-4 pt-4">
+                <LiquidGlass
+                  blur={10}
+                  refraction={18}
+                  saturation={1.6}
+                  onClick={() =>
+                    isPlaylistTrackActive ? onTogglePlay() : handlePlayAllFull(activePlaylist)
+                  }
+                  className="inline-flex cursor-pointer items-center gap-2.5 rounded-full bg-white px-6 py-3 text-sm font-bold text-black shadow-[0_8px_20px_rgba(255,255,255,0.25)] transition-all hover:scale-105 active:scale-95"
+                >
+                  {isPlaylistTrackActive ? (
+                    <Pause className="h-4 w-4 fill-current" />
+                  ) : (
+                    <Play className="h-4 w-4 fill-current" />
+                  )}
+                  <span>{isPlaylistTrackActive ? "Pause" : "Play"}</span>
+                </LiquidGlass>
+
+                <LiquidGlass
+                  blur={10}
+                  refraction={18}
+                  saturation={1.6}
+                  onClick={playShuffled}
+                  className={`inline-flex cursor-pointer items-center gap-2.5 rounded-full border border-white/30 bg-white/15 px-5 py-3 text-sm font-semibold text-white [--liquid-glass-rim-light:rgba(255,255,255,0.7)] shadow-lg shadow-black/10 transition-all hover:bg-white/25 hover:scale-105 active:scale-95 ${
+                    playlistTracks.length === 0 ? "pointer-events-none opacity-40" : ""
+                  }`}
+                >
+                  <Shuffle className="h-4 w-4" />
+                  Shuffle
+                </LiquidGlass>
+
+                {!isProtectedPlaylist(activePlaylist) && (
+                  <LiquidGlass
+                    blur={10}
+                    refraction={18}
+                    saturation={1.6}
+                    onClick={() => handleDeletePlaylist(activePlaylist.id)}
+                    className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-white/30 bg-white/15 text-white/80 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] shadow-lg shadow-black/10 transition-all hover:bg-white/25 hover:text-white hover:scale-105"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </LiquidGlass>
+                )}
               </div>
             </div>
-
-            <div className="flex items-center gap-2">
-              <GlassIcon
-                size="sm"
-                onClick={() => handlePlayAll(activePlaylist)}
-                className="text-white cursor-pointer"
-                aria-label="Play all"
-              >
-                <Play className="h-4 w-4 fill-current" />
-              </GlassIcon>
-
-              {isRecommendedPlaylist(activePlaylist) && (
-                <GlassButton
-                  onClick={onSaveRecommended}
-                  glassVariant="liquid-refract"
-                  className="flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold text-white"
-                >
-                  <Plus className="h-4 w-4 stroke-[2.5]" />
-                  Save to Library
-                </GlassButton>
-              )}
-
-              {!isProtectedPlaylist(activePlaylist) && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-white/80 hover:bg-white/20 transition-colors"
-                    >
-                      <MoreHorizontal className="h-5 w-5" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuPortal>
-                    <GlassDropdownMenuContent
-                      glassVariant="frosted"
-                      align="end"
-                      sideOffset={8}
-                      className="w-56"
-                    >
-                      <DropdownMenuItem onClick={() => handleRenamePlaylist(activePlaylist)}>
-                        <Pencil className="mr-2 h-4 w-4 text-white" />
-                        <span className="text-white">Rename</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDeletePlaylist(activePlaylist.id)}>
-                        <Trash2 className="mr-2 h-4 w-4 text-white" />
-                        <span className="text-white">Delete Playlist</span>
-                      </DropdownMenuItem>
-                    </GlassDropdownMenuContent>
-                  </DropdownMenuPortal>
-                </DropdownMenu>
-              )}
-            </div>
           </div>
 
-          {/* Playlist banner */}
-          <div className="flex flex-col items-center gap-6 rounded-3xl border border-white/10 bg-white/[0.04] p-6 sm:flex-row sm:items-center">
-            <div className="h-48 w-48 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-xl">
-              {getPlaylistImage(activePlaylist) ? (
-                <img
-                  src={getPlaylistImage(activePlaylist)}
-                  alt={activePlaylist.title}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <GlassCoverFallback title={activePlaylist.title} />
-              )}
-            </div>
-            <div className="space-y-1 text-center sm:text-left">
-              <h2 className="text-3xl font-extrabold tracking-tight text-white">{activePlaylist.title}</h2>
-              <p className="text-sm font-medium text-white/50">
-                {playlistTracks.length} {playlistTracks.length === 1 ? "track" : "tracks"}
-              </p>
-              {isRecommendedPlaylist(activePlaylist) && (
-                <p className="text-xs font-medium text-white/40">
-                  Picked from your listening taste · refreshes every 24 hours
-                </p>
-              )}
-            </div>
-          </div>
 
-          {/* Track list */}
-          <div className="space-y-2">
+          <div className="mt-5">
             {playlistTracks.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 py-16 text-center text-sm text-white/40">
+              <div className="py-10 text-center text-sm text-white/40">
                 No songs in this playlist yet. Add songs from search or during playback.
               </div>
             ) : (
-              <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-                {playlistTracks.map((track, index) => (
-                  <div
-                    key={track.id}
-                    onClick={() => onPlaylistPlay?.(activePlaylist.id, track)}
-                    className="group flex items-center justify-between gap-4 border-b border-white/5 px-4 py-3 transition last:border-0 hover:bg-white/10 cursor-pointer"
-                  >
-                    <div className="flex min-w-0 items-center gap-4">
-                      <span className="w-5 text-center text-sm font-semibold text-white/40">{index + 1}</span>
-                      <img
-                        src={track.cover || track.artworkUrl}
-                        alt={track.title}
-                        className="h-12 w-12 rounded-lg border border-white/10 object-cover"
-                      />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-white">{track.title}</p>
-                        <p className="truncate text-xs font-medium text-white/50">{track.artist}</p>
+              <>
+                <div className="mb-2 grid grid-cols-[48px_1fr_1fr_64px] border-b border-white/10 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white/50">
+                  <span>#</span>
+                  <span className="pl-[54px]">Title</span>
+                  <span>Artist</span>
+                  <span className="text-right">
+                    <Clock className="inline h-3.5 w-3.5" />
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  {playlistTracks.map((track, index) => (
+                    <div
+                      key={track.id}
+                      onClick={() => onPlaylistPlay?.(activePlaylist.id, track)}
+                      className="group grid cursor-pointer grid-cols-[48px_1fr_1fr_64px] items-center rounded-xl border border-transparent px-4 py-3 transition-all hover:border-white/10 hover:bg-white/10"
+                    >
+                      <div className="text-sm font-medium text-white/60 group-hover:text-white">
+                        {activeTrack?.id === track.id ? (
+                          isPlaying ? (
+                            <Pause className="h-4 w-4 fill-current text-white" />
+                          ) : (
+                            <Play className="h-4 w-4 fill-current text-white" />
+                          )
+                        ) : (
+                          <>
+                            <span className="group-hover:hidden">{index + 1}</span>
+                            <Play className="hidden h-4 w-4 fill-current group-hover:block" />
+                          </>
+                        )}
+                      </div>
+
+                      <div className="flex min-w-0 items-center gap-3.5 overflow-hidden pr-4">
+                        <img
+                          src={track.cover || track.artworkUrl}
+                          alt={track.title}
+                          loading="lazy"
+                          decoding="async"
+                          className="h-10 w-10 flex-shrink-0 rounded-lg border border-white/10 object-cover shadow-md ring-1 ring-white/10"
+                        />
+                        <span className="truncate text-sm font-bold text-white">
+                          {track.title}
+                        </span>
+                      </div>
+
+                      <div className="truncate pr-4 text-sm font-medium text-white/80">
+                        {track.artist}
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 text-xs font-medium text-white/60">
+                        <span className="group-hover:hidden">
+                          {formatTrackDuration(track.duration_seconds || track.duration)}
+                        </span>
+                        {!isProtectedPlaylist(activePlaylist) && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleRemoveTrack(e, track.id)}
+                            aria-label="Remove track"
+                            className="hidden rounded-full p-1.5 text-white/50 transition hover:bg-white/10 hover:text-white group-hover:block"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
-                    {!isProtectedPlaylist(activePlaylist) && (
-                      <button
-                        type="button"
-                        onClick={(e) => handleRemoveTrack(e, track.id)}
-                        aria-label="Remove track"
-                        className="rounded-full p-2 text-white/50 opacity-0 transition hover:bg-white/10 hover:text-white focus:opacity-100 group-hover:opacity-100"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>
+      </div>
 
         <PlaylistNameDialog
           open={isCreateOpen}
@@ -550,7 +667,7 @@ export default function PlaylistsView({
           open={Boolean(confirmDelete)}
           title={confirmDelete?.title}
           message={confirmDelete?.message}
-          onConfirm={() => runDelete(confirmDelete.ids)}
+          onConfirm={() => confirmDelete && runDelete(confirmDelete.ids)}
           onCancel={() => setConfirmDelete(null)}
         />
       </div>
@@ -560,7 +677,7 @@ export default function PlaylistsView({
   return (
     <div className="w-full text-white font-sans antialiased selection:bg-white selection:text-white">
       <div className={CONTENT_WRAP_CLASS}>
-        {/* Header */}
+
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white">Your Playlists</h1>
@@ -616,7 +733,7 @@ export default function PlaylistsView({
           </div>
         </div>
 
-        {/* Create Playlist Modal */}
+
         <PlaylistNameDialog
           open={isCreateOpen}
           title="Create New Playlist"
@@ -633,7 +750,7 @@ export default function PlaylistsView({
           onCancel={handleCreateCancel}
         />
 
-        {/* Rename Playlist Modal */}
+
         <PlaylistNameDialog
           open={Boolean(renameTarget)}
           title="Rename Playlist"
@@ -648,20 +765,32 @@ export default function PlaylistsView({
           open={Boolean(confirmDelete)}
           title={confirmDelete?.title}
           message={confirmDelete?.message}
-          onConfirm={() => runDelete(confirmDelete.ids)}
+          onConfirm={() => confirmDelete && runDelete(confirmDelete.ids)}
           onCancel={() => setConfirmDelete(null)}
         />
 
-        {/* Grid */}
+
         {displayPlaylists.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-white/10 py-20 text-center">
+          <div className="py-14 text-center">
             <ListPlus className="mx-auto mb-3 h-8 w-8 text-white/30" />
             <p className="text-sm text-white/50">No playlists yet. Create one to get started.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-5 pt-2 sm:grid-cols-3 lg:grid-cols-4">
-            {displayPlaylists.map((item) => {
+          <>
+            {userPlaylists.length > 0 && (
+              <div className="grid grid-cols-2 gap-5 pt-2 sm:grid-cols-3 lg:grid-cols-4">
+                {userPlaylists.map((item) => {
               const isSelected = selectedIds.has(item.id);
+              const posterSubtitle = isRecommendedPlaylist(item)
+                ? "Recommended"
+                : item.subtitle || `${(item.songIds || []).length} songs`;
+
+
+              const posterArtists = (item.songIds || [])
+                .map((id) => userTracks.find((t) => t.id === id)?.artist)
+                .filter(Boolean)
+                .filter((a, i, arr) => arr.indexOf(a) === i)
+                .slice(0, 8);
 
               return (
                 <div
@@ -673,9 +802,9 @@ export default function PlaylistsView({
                       setActivePlaylistId(item.id);
                     }
                   }}
-                  className="group relative cursor-pointer space-y-2"
+                  className="group relative cursor-pointer"
                 >
-                  {isSelectionMode && (
+                  {isSelectionMode && !isProtectedPlaylist(item) && (
                     <div
                       className={`absolute left-3 top-3 z-20 flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all ${
                         isSelected ? "border-white bg-white text-black" : "border-white/40 bg-black/20 text-transparent"
@@ -686,21 +815,20 @@ export default function PlaylistsView({
                   )}
 
                   <div
-                    className={`relative aspect-[4/5] overflow-hidden rounded-2xl bg-white/5 shadow-sm transition-all duration-300 ${
+                    className={`relative aspect-square overflow-hidden rounded-2xl bg-white/5 shadow-sm transition-all duration-300 ${
                       isSelectionMode && isSelected ? "ring-2 ring-white" : "group-hover:shadow-lg"
                     }`}
                   >
-                    {getPlaylistImage(item) ? (
-                      <img
-                        src={getPlaylistImage(item)}
-                        alt={item.title}
-                        className={`h-full w-full object-cover transition-transform duration-500 ${
-                          isSelectionMode ? "scale-100" : "group-hover:scale-105"
-                        }`}
-                      />
-                    ) : (
-                      <GlassCoverFallback title={item.title} />
-                    )}
+                    <PlaylistPoster
+                      title={item.title}
+                      subtitle={posterSubtitle}
+                      artists={posterArtists}
+                      gradient={
+                        item.id === "1"
+                          ? { name: "Playing with Reds", colors: ["#D31027", "#EA384D"] }
+                          : undefined
+                      }
+                    />
 
                     {!isSelectionMode && (
                       <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
@@ -710,7 +838,7 @@ export default function PlaylistsView({
                           className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md border border-white/20"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handlePlayAll(item);
+                            handlePlayAllFull(item);
                           }}
                         >
                           <Play className="h-5 w-5 fill-current" />
@@ -727,7 +855,7 @@ export default function PlaylistsView({
                           type="button"
                           onClick={onSaveRecommended}
                           aria-label="Save recommended playlist to your library"
-                          className="flex h-8 w-8 items-center justify-center rounded-full bg-black/30 text-white hover:bg-black/50 backdrop-blur-md transition-colors"
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white backdrop-blur-md transition-colors hover:bg-white/15"
                         >
                           <Plus className="h-4 w-4 stroke-[2.5]" />
                         </button>
@@ -740,7 +868,7 @@ export default function PlaylistsView({
                           <DropdownMenuTrigger asChild>
                             <button
                               type="button"
-                              className="flex h-8 w-8 items-center justify-center rounded-full bg-black/30 text-white hover:bg-black/50 backdrop-blur-md transition-colors"
+                              className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white backdrop-blur-md transition-colors hover:bg-white/15"
                             >
                               <MoreHorizontal className="h-4 w-4" />
                             </button>
@@ -766,19 +894,63 @@ export default function PlaylistsView({
                       </div>
                     )}
                   </div>
-
-                  <div className="px-0.5">
-                    <h3 className="truncate text-sm font-semibold text-white">{item.title}</h3>
-                    <p className="mt-0.5 truncate text-xs font-medium text-white/50">
-                      {isRecommendedPlaylist(item)
-                        ? `${(item.songIds || []).length} songs · refreshes daily`
-                        : item.subtitle || `${(item.songIds || []).length} songs`}
-                    </p>
-                  </div>
                 </div>
               );
-            })}
-          </div>
+              })}
+              </div>
+            )}
+
+            {genreList.length > 0 && (
+              <div className="w-full min-w-0 space-y-3 pt-4">
+                <div>
+                  <h2 className="text-lg font-bold tracking-tight">Browse by Genre</h2>
+                  <p className="text-xs text-white/50">Mixes built from your library</p>
+                </div>
+                <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
+                  {genreList.map((item) => {
+                    const count = (item.songIds || []).length;
+                    const posterArtists = (item.songIds || [])
+                      .map((id) => userTracks.find((t) => t.id === id)?.artist)
+                      .filter(Boolean)
+                      .filter((a, i, arr) => arr.indexOf(a) === i)
+                      .slice(0, 8);
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          if (!isSelectionMode) setActivePlaylistId(item.id);
+                        }}
+                        className="group relative cursor-pointer"
+                      >
+                        <div className="relative aspect-square overflow-hidden rounded-2xl bg-white/5 shadow-sm transition-all duration-300 group-hover:shadow-lg">
+                          <PlaylistPoster
+                            title={item.title}
+                            subtitle={`${count} ${count === 1 ? "song" : "songs"}`}
+                            artists={posterArtists}
+                          />
+                          {!isSelectionMode && (
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md border border-white/20"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePlayAll(item);
+                                }}
+                              >
+                                <Play className="h-5 w-5 fill-current" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

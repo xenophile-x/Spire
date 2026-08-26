@@ -5,8 +5,8 @@ import { supabase } from "@/lib/supabaseClient";
 export function cleanTrackTitle(rawTitle) {
   if (!rawTitle) return "";
   return rawTitle
-    .replace(/\.[^/.]+$/, "") 
-    .replace(/\[\s*(official|music|video|audio|lyric|hd|4k)\s*.*?\]/gi, "") 
+    .replace(/\.[^/.]+$/, "")
+    .replace(/\[\s*(official|music|video|audio|lyric|hd|4k)\s*.*?\]/gi, "")
     .replace(/\(\s*(official|music|video|audio|lyric|hd|4k)\s*.*?\)/gi, "")
     .replace(/[-_]/g, " ")
     .replace(/\s+/g, " ")
@@ -57,10 +57,22 @@ export async function fetchWikipediaPhoto(artistName) {
     const response = await fetch(
       `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
         artistName.trim()
-      )}`
+      )}`,
+      {
+        headers: {
+          "User-Agent": "SpireMusicApp/1.0.0 ( contact@spire.app )",
+          Accept: "application/json",
+        },
+      }
     );
     if (!response.ok) return "";
     const data = await response.json();
+
+
+    if (data?.type === "disambiguation") {
+      return fetchWikipediaPhotoFromSearch(artistName);
+    }
+
     return data?.originalimage?.source || data?.thumbnail?.source || "";
   } catch (error) {
     console.warn(`[Wikipedia] No photo for "${artistName}":`, error);
@@ -68,10 +80,57 @@ export async function fetchWikipediaPhoto(artistName) {
   }
 }
 
+
+async function fetchWikipediaPhotoFromSearch(artistName) {
+  const clean = artistName.trim();
+  const queries = [clean, `${clean} musician`, `${clean} (band)`];
+
+  for (const query of queries) {
+    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+      query
+    )}&format=json&origin=*`;
+    try {
+      const searchRes = await fetch(searchUrl);
+      if (!searchRes.ok) continue;
+      const searchData = await searchRes.json();
+      const hits = (searchData?.query?.search || []).slice(0, 5);
+
+      for (const hit of hits) {
+        if (hit.title?.toLowerCase().includes("disambiguation")) continue;
+        const hitLower = hit.title.toLowerCase();
+        const cleanLower = clean.toLowerCase();
+
+        const matches =
+          hitLower === cleanLower ||
+          hitLower.startsWith(cleanLower + " (") ||
+          hitLower.startsWith(cleanLower + ",");
+        if (!matches) continue;
+
+        const summaryRes = await fetch(
+          `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(hit.title)}`,
+          {
+            headers: {
+              "User-Agent": "SpireMusicApp/1.0.0 ( contact@spire.app )",
+              Accept: "application/json",
+            },
+          }
+        );
+        if (!summaryRes.ok) continue;
+        const summaryData = await summaryRes.json();
+        const img = summaryData?.originalimage?.source || summaryData?.thumbnail?.source;
+        if (img) return img;
+      }
+    } catch (err) {
+      console.warn(`[Wikipedia] Search failed for "${query}":`, err);
+    }
+  }
+  return "";
+}
+
 export async function fetchArtistPhoto(artistName) {
   if (!artistName) return "";
 
-  // 1. Preferred: iTunes/Apple Music photo (server-side og:image resolution)
+
   try {
     const { data, error } = await supabase.functions.invoke("fetch-artist-photo", {
       body: { artistName },
@@ -81,7 +140,7 @@ export async function fetchArtistPhoto(artistName) {
     console.warn(`[iTunes] Edge Function fetch failed for "${artistName}":`, err);
   }
 
-  // 2. Fallback: iTunes Search API musicArtist artwork (rarely populated)
+
   try {
     const response = await fetch(
       `https://itunes.apple.com/search?term=${encodeURIComponent(
@@ -103,9 +162,30 @@ export async function fetchArtistPhoto(artistName) {
     console.warn(`[iTunes] No artist photo for "${artistName}":`, error);
   }
 
-  // 3. Last resort: Wikipedia artist photo
+
   const wikiPhoto = await fetchWikipediaPhoto(artistName);
   if (wikiPhoto) return wikiPhoto;
 
   return "";
+}
+
+// Single-source artist lookup: the fetch-artist-photo edge function
+// (iTunes photo + Wikipedia bio). No client-side fallbacks — alternatives
+// produced inconsistent photos between views.
+export async function fetchArtistProfile(artistName) {
+  if (!artistName) return { photo_url: "", bio: "" };
+
+  try {
+    const { data, error } = await supabase.functions.invoke("fetch-artist-photo", {
+      body: { artistName },
+    });
+    if (error) throw error;
+    return {
+      photo_url: data?.photo_url || "",
+      bio: data?.bio || "",
+    };
+  } catch (err) {
+    console.warn(`[iTunes] Artist profile fetch failed for "${artistName}":`, err);
+    return { photo_url: "", bio: "" };
+  }
 }

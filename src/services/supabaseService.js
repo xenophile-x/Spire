@@ -1,6 +1,21 @@
 import { supabase } from "@/lib/supabaseClient";
 
-// --- LIBRARY ---
+
+export const getAcceptedLibraryShares = async (userId) => {
+  const { data, error } = await supabase
+    .from("library_shares")
+    .select("owner_id, users:owner_id ( full_name, email )")
+    .eq("grantee_id", userId)
+    .eq("status", "accepted")
+    .or("expires_at.is.null,expires_at.gt.now()");
+
+  if (error) throw error;
+  return (data || []).map((share) => ({
+    owner_id: share.owner_id,
+    shared_by: share.users?.full_name || share.users?.email || "A Friend",
+  }));
+};
+
 export const getUserLibrary = async (userId) => {
   const { data, error } = await supabase
     .from("user_tracks")
@@ -17,7 +32,7 @@ export const getUserLibrary = async (userId) => {
         duration_seconds,
         artist_id,
         artists ( name, photo_url, bio, favorite_artists ( artist_id ) ),
-        track_metadata ( artwork_url, primary_genre ),
+        track_metadata ( artwork_url, primary_genre, album_name, release_year ),
         track_lyrics ( synced_lyrics )
       )
     `)
@@ -27,7 +42,48 @@ export const getUserLibrary = async (userId) => {
   return data;
 };
 
-// --- ARTISTS ---
+
+export const getArtistsWithSampleTrack = async (userId) => {
+  try {
+    const { data, error } = await supabase
+      .from("user_tracks")
+      .select(`
+        tracks (
+          canonical_title,
+          canonical_artist,
+          artist_id,
+          artists ( id, name, photo_url, bio )
+        )
+      `)
+      .eq("user_id", userId);
+
+    if (error) throw error;
+
+    const map = new Map();
+    for (const rec of data || []) {
+      const t = rec?.tracks;
+      if (!t) continue;
+      const artistRow = Array.isArray(t.artists) ? t.artists[0] : t.artists;
+      const artistId = artistRow?.id || t.artist_id;
+      const name = artistRow?.name || t.canonical_artist;
+      if (!artistId || !name) continue;
+      if (!map.has(artistId)) {
+        map.set(artistId, {
+          id: artistId,
+          name,
+          photo_url: artistRow?.photo_url || null,
+          bio: artistRow?.bio || null,
+          sampleTrack: t.canonical_title || "",
+        });
+      }
+    }
+    return Array.from(map.values());
+  } catch (err) {
+    console.warn("[Supabase] Artists table not available yet (run the artists migration):", err);
+    return [];
+  }
+};
+
 export const getDistinctArtistsWithIds = async (userId) => {
   try {
     const { data, error } = await supabase
@@ -70,7 +126,33 @@ export const updateArtistPhoto = async (artistId, photoUrl) => {
   if (error) throw error;
 };
 
-// --- FAVORITE ARTISTS ---
+export const updateArtistProfile = async (artistId, { photoUrl, bio } = {}) => {
+  const payload = {};
+  if (photoUrl !== undefined) payload.photo_url = photoUrl;
+  if (bio !== undefined) payload.bio = bio;
+  if (!artistId || Object.keys(payload).length === 0) return;
+
+  const { error } = await supabase
+    .from("artists")
+    .update(payload)
+    .eq("id", artistId);
+  if (error) throw error;
+};
+
+// Persist a resolved cover URL so every future load reads it straight from
+// the DB instead of re-querying iTunes/MusicBrainz (single source of truth).
+export const updateTrackArtwork = async (trackId, artworkUrl) => {
+  if (!trackId || !artworkUrl) return;
+  const { error } = await supabase
+    .from("track_metadata")
+    .upsert(
+      { track_id: trackId, artwork_url: artworkUrl },
+      { onConflict: "track_id" }
+    );
+  if (error) throw error;
+};
+
+
 export const toggleArtistFavorite = async (userId, artistName) => {
   const { data: artist } = await supabase
     .from("artists")
@@ -103,7 +185,62 @@ export const toggleArtistFavorite = async (userId, artistName) => {
   return true;
 };
 
-// --- LISTENING HISTORY ---
+
+export const searchCatalog = async (query, limit = 8) => {
+  const sanitized = (query || "").replace(/[,()%_\\]/g, " ").trim();
+  if (!sanitized) {
+    return { tracks: [], artists: [] };
+  }
+  const q = `%${sanitized.replace(/"/g, "")}%`;
+  const [tracksRes, artistsRes] = await Promise.all([
+    supabase
+      .from("tracks")
+      .select(`
+        id,
+        canonical_title,
+        canonical_artist,
+        artist_id,
+        artists ( id, name, photo_url ),
+        track_metadata ( artwork_url )
+      `)
+      .or(`canonical_title.ilike.${q},canonical_artist.ilike.${q}`)
+      .limit(limit),
+    supabase
+      .from("artists")
+      .select("id, name, photo_url")
+      .ilike("name", q)
+      .limit(6),
+  ]);
+
+  if (tracksRes.error) {
+    console.warn("[Catalog] Track search failed:", tracksRes.error.message);
+  }
+  if (artistsRes.error) {
+    console.warn("[Catalog] Artist search failed:", artistsRes.error.message);
+  }
+
+  return {
+    tracks: (tracksRes.data || []).map((t) => {
+      const artistRow = Array.isArray(t.artists) ? t.artists[0] : t.artists;
+      const meta = Array.isArray(t.track_metadata) ? t.track_metadata[0] : t.track_metadata;
+      return {
+        id: t.id,
+        title: t.canonical_title,
+        artist: artistRow?.name || t.canonical_artist,
+        artist_id: t.artist_id,
+        artistPhotoUrl: artistRow?.photo_url || "",
+        cover: meta?.artwork_url || "",
+      };
+    }),
+    artists: (artistsRes.data || []).map((a) => ({
+      id: a.id,
+      name: a.name,
+      photo_url: a.photo_url || "",
+    })),
+  };
+};
+
+
 export const getListeningHistoryTrackIds = async (userId, limit = 8) => {
   const { data, error } = await supabase
     .from("listening_history")
@@ -137,7 +274,7 @@ export const recordListen = async (userId, trackId, genre = "Unknown") => {
   if (error) console.error("Failed to record listen:", error);
 };
 
-// --- LIKED SONGS ---
+
 export const getLikedSongs = async (userId) => {
   const { data, error } = await supabase
     .from("liked_songs")
@@ -163,7 +300,7 @@ export const toggleLikedSong = async (userId, trackId, isCurrentlyLiked) => {
   }
 };
 
-// --- PLAYLISTS ---
+
 export const getUserPlaylists = async (userId) => {
   const { data, error } = await supabase
     .from("playlists")
@@ -244,17 +381,67 @@ export const removeTrackFromPlaylist = async (playlistId, trackId) => {
   if (error) throw error;
 };
 
-// --- TRACK REGISTRATION PIPELINE ---
+export const deleteUserTrack = async (userTrackId) => {
+  const { error } = await supabase
+    .from("user_tracks")
+    .delete()
+    .eq("id", userTrackId);
+
+  if (error) throw error;
+};
+
+
 export const registerTrackInSupabase = async ({
   userId,
   driveFileId,
   filename,
   trackInfo,
   lyricsData,
-  itunesTrackId = null, // reference metadata only — never used as tracks.id
+  itunesTrackId = null,
 }) => {
-  // ALWAYS resolve the real Supabase track row via lookup-or-create.
-  // We never trust an external ID (like iTunes's trackId) as our own primary key.
+
+  // Resolve (or create) the artist row so uploads stay linked to one artist
+  // entity — unlinked tracks surface in the carousel without a photo.
+  const artistName = (trackInfo.artist || "").trim();
+  let artistId = null;
+  const normalizedArtist = artistName.toLowerCase();
+  if (
+    artistName &&
+    normalizedArtist !== "unknown" &&
+    normalizedArtist !== "unknown artist"
+  ) {
+    const safePattern = artistName.replace(/[%_\\]/g, " ").trim();
+    const { data: existingArtist } = await supabase
+      .from("artists")
+      .select("id")
+      .ilike("name", safePattern)
+      .maybeSingle();
+
+    if (existingArtist?.id) {
+      artistId = existingArtist.id;
+    } else {
+      const { data: newArtist, error: artistError } = await supabase
+        .from("artists")
+        .insert({ name: artistName })
+        .select("id")
+        .single();
+
+      if (!artistError) {
+        artistId = newArtist.id;
+      } else if (artistError.code === "23505") {
+        // Lost a race with another upload creating the same artist.
+        const { data: racedArtist } = await supabase
+          .from("artists")
+          .select("id")
+          .ilike("name", safePattern)
+          .maybeSingle();
+        artistId = racedArtist?.id || null;
+      } else {
+        console.warn("[Supabase] Artist link failed:", artistError.message);
+      }
+    }
+  }
+
   const { data: existingTrack, error: lookupError } = await supabase
     .from("tracks")
     .select("id")
@@ -266,6 +453,15 @@ export const registerTrackInSupabase = async ({
 
   let finalTrackId = existingTrack?.id;
 
+  // Existing canonical row without an artist link? Fill it in.
+  if (finalTrackId && artistId) {
+    await supabase
+      .from("tracks")
+      .update({ artist_id: artistId })
+      .eq("id", finalTrackId)
+      .is("artist_id", null);
+  }
+
   if (!finalTrackId) {
     const { data: newTrack, error: trackError } = await supabase
       .from("tracks")
@@ -274,19 +470,37 @@ export const registerTrackInSupabase = async ({
           canonical_title: trackInfo.title,
           canonical_artist: trackInfo.artist,
           duration_seconds: trackInfo.durationSeconds,
-          // Optional: store the iTunes ID for future dedupe/matching.
-          // Only include this if you've added an `itunes_id` column to `tracks`.
+
+
           ...(itunesTrackId ? { itunes_id: itunesTrackId } : {}),
+          ...(artistId ? { artist_id: artistId } : {}),
         },
       ])
       .select("id")
       .single();
 
-    if (trackError) throw trackError;
-    finalTrackId = newTrack.id;
+    if (trackError) {
+
+
+      if (trackError.code === "23505") {
+        const { data: racedTrack, error: relookupError } = await supabase
+          .from("tracks")
+          .select("id")
+          .ilike("canonical_title", trackInfo.title)
+          .ilike("canonical_artist", trackInfo.artist)
+          .maybeSingle();
+        if (relookupError) throw relookupError;
+        if (!racedTrack?.id) throw trackError;
+        finalTrackId = racedTrack.id;
+      } else {
+        throw trackError;
+      }
+    } else {
+      finalTrackId = newTrack.id;
+    }
   }
 
-  // Insert or update track metadata (artwork, genre, etc.)
+
   const { error: metadataError } = await supabase.from("track_metadata").upsert(
     {
       track_id: finalTrackId,
@@ -297,7 +511,7 @@ export const registerTrackInSupabase = async ({
   );
   if (metadataError) throw metadataError;
 
-  // Insert or update track lyrics
+
   if (lyricsData?.plainLyrics || lyricsData?.syncedLyrics) {
     const { error: lyricsError } = await supabase.from("track_lyrics").upsert(
       {
@@ -311,7 +525,7 @@ export const registerTrackInSupabase = async ({
     if (lyricsError) throw lyricsError;
   }
 
-  // Link track to the user's personal library in user_tracks
+
   const { data: userTrack, error: userTrackError } = await supabase
     .from("user_tracks")
     .insert([
@@ -325,7 +539,20 @@ export const registerTrackInSupabase = async ({
     .select()
     .single();
 
-  if (userTrackError) throw userTrackError;
+  if (userTrackError) {
+
+
+    if (userTrackError.code === "23505") {
+      const { data: existingUserTrack } = await supabase
+        .from("user_tracks")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("track_id", finalTrackId)
+        .maybeSingle();
+      return existingUserTrack;
+    }
+    throw userTrackError;
+  }
 
   return userTrack;
 };

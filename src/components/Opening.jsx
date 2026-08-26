@@ -1,10 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
-
-const audioSynth = {
-  enabled: false,
-  volume: 0,
-  playBurstSound: () => console.log('Burst sound played!'),
-};
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
   const canvasRef = useRef(null);
@@ -12,7 +6,7 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
 
   useEffect(() => {
     const openglColors = [
-      "#333333", "#00b2ff", "#13e6a3", "#00e650", 
+      "#333333", "#00b2ff", "#13e6a3", "#00e650",
       "#ffe600", "#ff5500", "#FF0000", "#8e00fe", "#ff007f"
     ];
 
@@ -47,25 +41,35 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
     if (!ctx) return;
 
     const render = () => {
-      const width = canvas.width;
-      const height = canvas.height;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = canvas.clientWidth || canvas.width;
+      const height = canvas.clientHeight || canvas.height;
+      if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
       const cx = width / 2;
       const cy = height / 2;
       const focalLength = Math.min(width, height) * 0.85;
 
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, width, height);
+      ctx.clearRect(0, 0, width, height);
 
       const diveZ = Math.pow(progress, 2.5) * 5500;
 
-      const sortedBars = [...pencilBarsRef.current]
-        .map((bar) => ({ ...bar, relZ: 2000 + bar.zOffset - diveZ }))
-        .filter((b) => b.relZ > 5 && b.relZ < 5000)
-        .sort((a, b) => b.relZ - a.relZ);
+      const visible = [];
+      for (const bar of pencilBarsRef.current) {
+        const relZ = 2000 + bar.zOffset - diveZ;
+        if (relZ > 5 && relZ < 5000) {
+          visible.push({ bar, relZ });
+        }
+      }
+      visible.sort((a, b) => b.relZ - a.relZ);
 
-      sortedBars.forEach((bar) => {
-        const zNear = Math.max(1, bar.relZ);
-        const zFar = bar.relZ + bar.length;
+      const buildBarPath = (bar, relZ) => {
+        const zNear = Math.max(1, relZ);
+        const zFar = relZ + bar.length;
         if (zFar <= 0) return;
 
         const scaleNear = focalLength / zNear;
@@ -84,57 +88,48 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
         const nx = -sin;
         const ny = cos;
 
-        const p1x = xNearCenter + nx * (thickNear / 2);
-        const p1y = yNearCenter + ny * (thickNear / 2);
-        const p2x = xFarCenter + nx * (thickFar / 2);
-        const p2y = yFarCenter + ny * (thickFar / 2);
-        const p4x = xNearCenter - nx * (thickNear / 2);
-        const p4y = yNearCenter - ny * (thickNear / 2);
+        ctx.moveTo(xNearCenter + nx * (thickNear / 2), yNearCenter + ny * (thickNear / 2));
+        ctx.lineTo(xFarCenter + nx * (thickFar / 2), yFarCenter + ny * (thickFar / 2));
+        ctx.arc(xFarCenter, yFarCenter, Math.max(1, thickFar / 2), bar.angle + Math.PI / 2, bar.angle - Math.PI / 2);
+        ctx.lineTo(xNearCenter - nx * (thickNear / 2), yNearCenter - ny * (thickNear / 2));
+        ctx.arc(xNearCenter, yNearCenter, Math.max(1, thickNear / 2), bar.angle - Math.PI / 2, bar.angle + Math.PI / 2);
+        ctx.closePath();
+      };
 
-        const buildPath = () => {
-          ctx.beginPath();
-          ctx.moveTo(p1x, p1y);
-          ctx.lineTo(p2x, p2y);
-          ctx.arc(xFarCenter, yFarCenter, Math.max(1, thickFar / 2), bar.angle + Math.PI / 2, bar.angle - Math.PI / 2);
-          ctx.lineTo(p4x, p4y);
-          ctx.arc(xNearCenter, yNearCenter, Math.max(1, thickNear / 2), bar.angle - Math.PI / 2, bar.angle + Math.PI / 2);
-          ctx.closePath();
-        };
+      const byColor = new Map();
+      for (const { bar } of visible) {
+        if (!byColor.has(bar.color)) byColor.set(bar.color, []);
+        byColor.get(bar.color).push(bar);
+      }
 
-        ctx.save();
-        ctx.filter = 'blur(9px)';
-        ctx.globalAlpha = 0.55;
-        buildPath();
-        ctx.fillStyle = bar.color;
+      ctx.filter = 'blur(9px)';
+      ctx.globalAlpha = 0.55;
+      for (const [color, barsOfColor] of byColor) {
+        ctx.beginPath();
+        for (const { bar, relZ } of barsOfColor) buildBarPath(bar, relZ);
+        ctx.fillStyle = color;
         ctx.fill();
-        ctx.restore();
-
-        ctx.save();
-        ctx.globalAlpha = 0.95;
-        buildPath();
+      }
+      ctx.filter = 'none';
+      ctx.globalAlpha = 0.95;
+      for (const { bar, relZ } of visible) {
+        ctx.beginPath();
+        buildBarPath(bar, relZ);
         ctx.fillStyle = bar.color;
         ctx.fill();
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
         ctx.lineWidth = 0.6;
         ctx.stroke();
-        ctx.restore();
-      });
-    };
-
-    const resizeCanvas = () => {
-      const parent = canvas.parentElement;
-      if (parent) {
-        canvas.width = parent.clientWidth;
-        canvas.height = parent.clientHeight;
       }
-      render();
+      ctx.globalAlpha = 1;
     };
 
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    render();
-
-    return () => window.removeEventListener('resize', resizeCanvas);
+    let rafId = requestAnimationFrame(render);
+    window.addEventListener('resize', render);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', render);
+    };
   }, [progress]);
 
   return (
@@ -149,104 +144,104 @@ export default function Opening({ onComplete }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const maxTime = 4.0;
-  const lastPlayedTrigger = useRef(-1);
   const audioRef = useRef(null);
+  const timeRef = useRef(0);
+  const hasStartedRef = useRef(false);
+  const isPlayingRef = useRef(false);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
-  // Initialize audio once
+  hasStartedRef.current = hasStarted;
+  isPlayingRef.current = isPlaying;
+
   useEffect(() => {
-    audioRef.current = new Audio('/boot.mp3');
-    audioRef.current.volume = 0.6;
+    const audio = new Audio('/boot.mp3');
+    audio.volume = 0.6;
+    audio.addEventListener('error', () => console.log("Boot audio unavailable"));
+    audioRef.current = audio;
 
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+      audio.pause();
+      audioRef.current = null;
     };
   }, []);
 
-  // Action to start the sequence
-  const startSequence = () => {
-    if (hasStarted) return;
+  const finish = useCallback(() => {
+    if (onCompleteRef.current) onCompleteRef.current();
+  }, []);
+
+  const startSequence = useCallback(() => {
+    if (hasStartedRef.current) return;
     setHasStarted(true);
     setIsPlaying(true);
     if (audioRef.current) {
       audioRef.current.play().catch((err) => console.log("Audio play failed:", err));
     }
-  };
+  }, []);
 
-  // Keyboard & Click controls after starting
-  const handleBackgroundClick = () => {
-    if (!hasStarted) return; // Let the intro button handle the initial start
+  const handleBackgroundClick = useCallback(() => {
+    if (!hasStartedRef.current) return;
 
-    if (currentTime >= maxTime) {
-      if (onComplete) onComplete();
+    if (timeRef.current >= maxTime) {
+      finish();
     } else {
-      setIsPlaying((prev) => {
-        const nextState = !prev;
-        if (audioRef.current) {
-          nextState ? audioRef.current.play().catch(()=>{}) : audioRef.current.pause();
+      const next = !isPlayingRef.current;
+      setIsPlaying(next);
+      if (audioRef.current) {
+        if (next) {
+          audioRef.current.play().catch(() => {});
+        } else {
+          audioRef.current.pause();
         }
-        return nextState;
-      });
+      }
     }
-  };
+  }, [finish]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Enter") {
-        if (!hasStarted) {
+        if (!hasStartedRef.current) {
           startSequence();
+        } else if (timeRef.current >= maxTime) {
+          finish();
         } else {
-          // Skip logic if already running
-          if (currentTime >= maxTime) {
-            if (onComplete) onComplete();
-          } else {
-            setCurrentTime(maxTime);
-            setIsPlaying(false);
-            if (audioRef.current) audioRef.current.pause();
-          }
+          timeRef.current = maxTime;
+          setCurrentTime(maxTime);
+          setIsPlaying(false);
+          if (audioRef.current) audioRef.current.pause();
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hasStarted, currentTime, onComplete]);
+  }, [startSequence, finish]);
 
-  // Sync Synth Logic
-  useEffect(() => {
-    if (!hasStarted) return;
-    audioSynth.enabled = true;
-    audioSynth.volume = 0.3;
-
-    if (currentTime >= 0.1 && currentTime < 0.5 && lastPlayedTrigger.current !== 0) {
-      audioSynth.playBurstSound();
-      lastPlayedTrigger.current = 0;
-    } else if (currentTime < 0.1) {
-      lastPlayedTrigger.current = -1;
-    }
-  }, [currentTime, hasStarted]);
-
-  // Animation Loop
   useEffect(() => {
     if (!isPlaying) return;
 
     let animationFrameId;
     let lastStamp = null;
+    let lastUiUpdate = 0;
 
     const tick = (stamp) => {
       if (!lastStamp) lastStamp = stamp;
       const delta = (stamp - lastStamp) / 1000;
       lastStamp = stamp;
 
-      setCurrentTime((prev) => {
-        const next = prev + delta;
-        if (next >= maxTime) {
-          setIsPlaying(false);
-          return maxTime; 
-        }
-        return next;
-      });
+      const next = timeRef.current + delta;
+      timeRef.current = next;
+
+      if (next >= maxTime) {
+        timeRef.current = maxTime;
+        setCurrentTime(maxTime);
+        setIsPlaying(false);
+        return;
+      }
+
+      if (stamp - lastUiUpdate > 33) {
+        lastUiUpdate = stamp;
+        setCurrentTime(next);
+      }
 
       animationFrameId = requestAnimationFrame(tick);
     };
@@ -255,15 +250,12 @@ export default function Opening({ onComplete }) {
     return () => cancelAnimationFrame(animationFrameId);
   }, [isPlaying]);
 
-  // Auto-advance
   useEffect(() => {
     if (hasStarted && currentTime >= maxTime) {
-      const timer = setTimeout(() => {
-        if (onComplete) onComplete();
-      }, 1200);
+      const timer = setTimeout(finish, 1200);
       return () => clearTimeout(timer);
     }
-  }, [currentTime, hasStarted, onComplete]);
+  }, [currentTime, hasStarted, finish]);
 
   const burstProgress = Math.min(1, Math.max(0, currentTime / maxTime));
 
@@ -273,21 +265,22 @@ export default function Opening({ onComplete }) {
       onClick={handleBackgroundClick}
     >
       <SpeedLinesCanvas progress={burstProgress} lineCount={72} />
-      
-      {/* Pre-start White Overlay Gate */}
-      {!hasStarted && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white transition-opacity duration-500">
-          <button
-            onClick={(e) => {
-              e.stopPropagation(); // Prevents background click from firing at the same time
-              startSequence();
-            }}
-            className="px-8 py-3 bg-white text-gray-500 font-medium tracking-wide rounded-full border border-gray-200 shadow-sm transition-all duration-300 ease-out hover:scale-105 hover:shadow-md hover:text-gray-800 focus:outline-none"
-          >
-            Press Enter to continue
-          </button>
-        </div>
-      )}
+
+      <div
+        className={`absolute inset-0 z-50 flex items-center justify-center bg-white transition-opacity duration-500 ${
+          hasStarted ? "opacity-0 pointer-events-none" : "opacity-100"
+        }`}
+      >
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            startSequence();
+          }}
+          className="px-8 py-3 bg-white text-gray-500 font-medium tracking-wide rounded-full border border-gray-200 shadow-sm transition-all duration-300 ease-out hover:scale-105 hover:shadow-md hover:text-gray-800 focus:outline-none"
+        >
+          Press Enter to continue
+        </button>
+      </div>
     </div>
   );
 }

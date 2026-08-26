@@ -32,11 +32,29 @@ const GlassIcon = forwardRef(function GlassIcon(
     size = "md",
     liquidProps,
     surfaceClassName,
-    asChild,
+    disabled,
+    onClick,
     ...domProps
   },
   ref
 ) {
+  const handleClick = (e) => {
+    if (disabled) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    onClick?.(e);
+  };
+
+  const handleKeyDown = (e) => {
+    if (disabled) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick?.(e);
+    }
+  };
+
   if (glassVariant === "liquid-refract") {
     return (
       <LiquidGlass
@@ -51,14 +69,18 @@ const GlassIcon = forwardRef(function GlassIcon(
         <div
           ref={ref}
           role="button"
-          tabIndex={0}
+          tabIndex={disabled ? -1 : 0}
+          aria-disabled={disabled || undefined}
           data-slot="glass-icon"
           data-glass-variant={glassVariant}
           className={cn(
             glassIconVariants({ size }),
             "border-0 bg-transparent shadow-none",
+            disabled && "pointer-events-none opacity-50 cursor-not-allowed",
             className
           )}
+          onClick={handleClick}
+          onKeyDown={handleKeyDown}
           {...domProps}
         />
       </LiquidGlass>
@@ -69,15 +91,19 @@ const GlassIcon = forwardRef(function GlassIcon(
     <div
       ref={ref}
       role="button"
-      tabIndex={0}
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled || undefined}
       data-slot="glass-icon"
       data-glass-variant={glassVariant}
       className={cn(
         glassIconVariants({ size }),
         glassVariantStyles[glassVariant],
         "transition-transform duration-150 active:scale-95 motion-reduce:transition-none",
+        disabled && "pointer-events-none opacity-50 cursor-not-allowed",
         className
       )}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
       {...domProps}
     />
   );

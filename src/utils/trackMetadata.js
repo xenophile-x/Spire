@@ -11,7 +11,7 @@ export function extractCoverUrl(trackObj) {
 
   let meta = trackObj.track_metadata;
   if (Array.isArray(meta)) {
-    meta = meta[0]; 
+    meta = meta[0];
   }
 
   const artwork = meta?.artwork_url || meta?.cover;
@@ -55,8 +55,8 @@ export function formatUserTrack(userTrack) {
     album: meta?.album_name || "Single",
     primary_genre: meta?.primary_genre || "Pop",
     release_year: meta?.release_year || null,
-    cover: coverUrl,            
-    artworkUrl: coverUrl,       
+    cover: coverUrl,
+    artworkUrl: coverUrl,
     duration: trackObj.duration_seconds || 0,
     synced_lyrics: lyrics?.synced_lyrics || "",
     plain_lyrics: lyrics?.plain_lyrics || "",

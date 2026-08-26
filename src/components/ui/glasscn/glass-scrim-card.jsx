@@ -4,13 +4,10 @@ import { cn } from "@/lib/utils";
 import { Card } from "../card";
 import { LiquidGlass } from "./liquid-glass";
 
-// Solid hold followed by one long quintic-smootherstep fade. The quintic has
-// zero first AND second derivatives at both ends, so the fade joins the solid
-// region and the clear glass without any visible crease (a cubic smoothstep
-// leaves a Mach band at the junctions).
+
 const SCRIM_SAMPLES = 16;
 
-// Fraction of the coverage that stays fully solid before the fade begins.
+
 const SCRIM_HOLD_RATIO = 0.3;
 
 function scrimGradient(to, opacity, coverage) {

@@ -21,7 +21,7 @@ function seededShuffle(array, seed) {
 export function buildStationQueue(station, userTracks) {
   const withDuration = userTracks
     .filter((t) => (t.duration_seconds || t.duration) > 0)
-    .sort((a, b) => String(a.id).localeCompare(String(b.id))); // stable order regardless of fetch order
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
 
   const genreMatched = station.genre
     ? withDuration.filter(

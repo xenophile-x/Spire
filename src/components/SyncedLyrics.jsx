@@ -1,71 +1,107 @@
- import React, { useMemo, useEffect, useRef } from 'react';
+import React, { useMemo, useEffect, useRef, useCallback } from "react";
+import { parseLRC, getActiveLyricIndex } from "@/utils/lyricsParser";
 
-function parseLRC(lrcString) {
-  if (!lrcString) return [];
 
-  const lines = lrcString.split('\n');
-  const parsed = [];
-
-  const timeRegex = /\[(\d{2}):(\d{2})[.:](\d{2,3})\]/;
-
-  for (const line of lines) {
-    const match = timeRegex.exec(line);
-    if (match) {
-      const minutes = parseInt(match[1], 10);
-      const seconds = parseInt(match[2], 10);
-      const milliseconds = parseInt(match[3].padEnd(3, '0'), 10);
-
-      const timeInSeconds = minutes * 60 + seconds + milliseconds / 1000;
-      const text = line.replace(timeRegex, '').trim();
-
-      if (text) {
-        parsed.push({ time: timeInSeconds, text });
-      }
-    }
-  }
-
-  return parsed.sort((a, b) => a.time - b.time);
-}
-
-export default function SyncedLyrics({ syncedLyrics, plainLyrics, currentTime = 0, onSeek }) {
+export default function SyncedLyrics({
+  lines,
+  syncedLyrics,
+  plainLyrics = "",
+  currentTime = 0,
+  onSeek,
+  autoFollow = true,
+  onAutoFollowChange,
+  emptyMessage = "No lyrics available for this track.",
+  containerClassName = "",
+  spacerClassName = "h-32",
+  lineClassName,
+}) {
   const containerRef = useRef(null);
   const activeLineRef = useRef(null);
 
-  const parsedLyrics = useMemo(() => parseLRC(syncedLyrics), [syncedLyrics]);
 
-  const activeIndex = useMemo(() => {
-    if (!parsedLyrics.length) return -1;
+  const isAutoScrollingRef = useRef(false);
+  const releaseTimerRef = useRef(null);
 
-    for (let i = parsedLyrics.length - 1; i >= 0; i--) {
-      if (currentTime >= parsedLyrics[i].time) {
-        return i;
-      }
-    }
-    return 0;
-  }, [parsedLyrics, currentTime]);
+  const parsedLines = useMemo(
+    () => lines || parseLRC(syncedLyrics || ""),
+    [lines, syncedLyrics]
+  );
+
+  const activeIndex = useMemo(
+    () => getActiveLyricIndex(parsedLines, currentTime),
+    [parsedLines, currentTime]
+  );
+
+  const centerActiveLine = useCallback(() => {
+    const container = containerRef.current;
+    const el = activeLineRef.current;
+    if (!container || !el) return;
+    const target =
+      el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2;
+    const clamped = Math.max(
+      0,
+      Math.min(target, container.scrollHeight - container.clientHeight)
+    );
+    isAutoScrollingRef.current = true;
+    container.scrollTo({ top: clamped, behavior: "smooth" });
+
+
+    if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
+    releaseTimerRef.current = setTimeout(() => {
+      isAutoScrollingRef.current = false;
+    }, 450);
+  }, []);
 
   useEffect(() => {
-    if (activeLineRef.current && containerRef.current) {
-      activeLineRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
+    if (autoFollow && activeIndex >= 0) {
+      centerActiveLine();
     }
-  }, [activeIndex]);
+  }, [activeIndex, autoFollow, centerActiveLine]);
 
-  if (!syncedLyrics && plainLyrics) {
-    return (
-      <div className="h-full overflow-y-auto p-6 text-neutral-300 whitespace-pre-line text-lg leading-relaxed text-center font-medium">
-        {plainLyrics}
-      </div>
-    );
-  }
+  useEffect(() => {
+    return () => {
+      if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    };
+  }, []);
 
-  // Fallback 2: No lyrics found
-  if (!parsedLyrics.length) {
+  const scrollTimeoutRef = useRef(null);
+
+  const handleScroll = () => {
+    if (!isAutoScrollingRef.current) {
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = setTimeout(() => {
+        onAutoFollowChange?.(false);
+      }, 150);
+    }
+  };
+
+  const handleLineClick = (time) => {
+    onAutoFollowChange?.(false);
+    onSeek?.(time);
+  };
+
+  const defaultLineClass = useCallback((index, isActive, isPast) =>
+    `cursor-pointer text-center font-bold tracking-tight transition-all duration-300 ${
+      isActive
+        ? "text-white text-3xl sm:text-4xl drop-shadow-[0_0_18px_rgba(255,255,255,0.5)]"
+        : isPast
+        ? "text-white/60 text-xl sm:text-2xl hover:text-white/80"
+        : "text-white/45 text-xl sm:text-2xl hover:text-white/70"
+    }`, []);
+
+
+  if (!parsedLines.length) {
+    if (plainLyrics) {
+      return (
+        <div className="h-full w-full overflow-y-auto whitespace-pre-line px-8 py-6 text-center text-lg font-medium leading-relaxed custom-scrollbar">
+          {plainLyrics}
+        </div>
+      );
+    }
     return (
-      <div className="h-full flex items-center justify-center text-neutral-500 font-medium">
-        No lyrics available for this track.
+      <div className="flex h-full w-full items-center justify-center text-center">
+        <p className="text-sm font-medium">{emptyMessage}</p>
       </div>
     );
   }
@@ -73,35 +109,28 @@ export default function SyncedLyrics({ syncedLyrics, plainLyrics, currentTime = 
   return (
     <div
       ref={containerRef}
-      className="h-full overflow-y-auto p-10 space-y-6 scrollbar-none no-scrollbar text-center select-none"
+      onScroll={handleScroll}
+      className={containerClassName}
     >
-      {}
-      <div className="h-32" />
-
-      {parsedLyrics.map((line, index) => {
+      <div className={spacerClassName} />
+      {parsedLines.map((line, index) => {
         const isActive = index === activeIndex;
         const isPast = index < activeIndex;
-
+        const cls = lineClassName
+          ? lineClassName(index, isActive, isPast)
+          : defaultLineClass(index, isActive, isPast);
         return (
           <p
             key={`${line.time}-${index}`}
             ref={isActive ? activeLineRef : null}
-            onClick={() => onSeek && onSeek(line.time)}
-            className={`cursor-pointer transition-all duration-300 font-bold tracking-tight transform origin-center ${
-              isActive
-                ? 'text-white text-2xl md:text-3xl scale-105 opacity-100 drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]'
-                : isPast
-                ? 'text-neutral-500 text-lg md:text-xl opacity-60 hover:opacity-90'
-                : 'text-neutral-400 text-lg md:text-xl opacity-40 hover:opacity-80'
-            }`}
+            onClick={() => handleLineClick(line.time)}
+            className={`select-none ${cls}`}
           >
             {line.text}
           </p>
         );
       })}
-
-      {/* Bottom spacer to allow last lines to center properly */}
-      <div className="h-32" />
+      <div className={spacerClassName} />
     </div>
   );
 }

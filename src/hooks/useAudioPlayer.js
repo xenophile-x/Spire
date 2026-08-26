@@ -33,15 +33,13 @@ function createAudioBlobUrl(rawBlob) {
   return URL.createObjectURL(audioBlob);
 }
 
-/**
- * Single playback choke point. Every playback start — new song click, station
- * click, next/previous — routes through loadAndPlay(), which guarantees
- * "stop current → wait → load → play" instead of overlapping audio.
- */
+
 export function useAudioPlayer({ onEnded } = {}) {
   const audioRef = useRef(null);
-  const loadTokenRef = useRef(0); // bumped on every new load — stale callbacks check against this
+  const loadTokenRef = useRef(0);
   const blobUrlRef = useRef(null);
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
 
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -58,7 +56,7 @@ export function useAudioPlayer({ onEnded } = {}) {
     const onLoadedMetadata = () => setDuration(audio.duration || 0);
     const handleEnded = () => {
       setIsPlaying(false);
-      onEnded?.();
+      onEndedRef.current?.();
     };
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
@@ -79,7 +77,7 @@ export function useAudioPlayer({ onEnded } = {}) {
       audio.src = "";
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
     };
-  }, [onEnded]);
+  }, []);
 
   const resolveTrackUrl = useCallback(async (track) => {
     const direct = track.url || track.src;
@@ -87,16 +85,12 @@ export function useAudioPlayer({ onEnded } = {}) {
     const driveId =
       track.driveFileId || track.drive_file_id || track.drive_id;
     if (!driveId) throw new Error("No audio source available for this track.");
-    if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
-    blobUrlRef.current = await fetchDriveBlobUrl(driveId);
-    return blobUrlRef.current;
+
+
+    return fetchDriveBlobUrl(driveId);
   }, []);
 
-  /**
-   * Stop whatever's playing, load a new source, and play it.
-   * Rapid repeated calls are safe — only the LATEST call actually
-   * finishes; every earlier in-flight call quietly bails out.
-   */
+
   const loadAndPlay = useCallback(
     async (track, { seekTo = 0 } = {}) => {
       const audio = audioRef.current;
@@ -104,7 +98,7 @@ export function useAudioPlayer({ onEnded } = {}) {
 
       const myToken = ++loadTokenRef.current;
 
-      // Silence the old track immediately — no overlap while new one loads
+
       audio.pause();
       setIsPlaying(false);
       setIsLoading(true);
@@ -122,9 +116,16 @@ export function useAudioPlayer({ onEnded } = {}) {
         return;
       }
 
-      // A newer load call started while we were waiting — this one is stale, drop it
-      if (loadTokenRef.current !== myToken) return;
 
+      if (loadTokenRef.current !== myToken) {
+        if (url !== track.url && url !== track.src) {
+          URL.revokeObjectURL(url);
+        }
+        return;
+      }
+
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = url;
       audio.src = url;
       audio.load();
 
@@ -149,14 +150,14 @@ export function useAudioPlayer({ onEnded } = {}) {
       try {
         await waitUntilReady();
 
-        // A newer load call started while we were waiting — this one is stale, drop it
+
         if (loadTokenRef.current !== myToken) return;
 
         if (seekTo > 0) audio.currentTime = seekTo;
         await audio.play();
       } catch (err) {
-        // AbortError fires when play() gets interrupted by the next pause() —
-        // expected during fast switching, not a real failure
+
+
         if (err?.name !== "AbortError" && loadTokenRef.current === myToken) {
           console.error("[AudioPlayer] Playback failed:", err);
         }

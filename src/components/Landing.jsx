@@ -1,25 +1,26 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { PageDot } from "@/assets/icons";
 
 const DEFAULT_BG_IMAGE =
   "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=2070&auto=format&fit=crop";
 
 const apps = [
-  // Row 1
+
   { name: "Instagram", iconPath: "/instagram.png" },
   { name: "LinkedIn", iconPath: "/linkedin.png" },
   { name: "Snapchat", iconPath: "/snapchat.png" },
   { name: "Pinterest", iconPath: "/pinterest.png" },
-  // Row 2
+
   { name: "Earth", iconPath: "/earth.png" },
   { name: "Discord", iconPath: "/discord.png" },
   { name: "WhatsApp", iconPath: "/whatsapp.png" },
-  // Row 3
+
   { name: "Facebook", iconPath: "/facebook.png" },
   { name: "Reddit", iconPath: "/reddit.png" },
   { name: "Spire", iconPath: "/spire.png", isMain: true },
 ];
 
-// Row layout: 4 - 3 - 3
+
 const rows = [
   apps.slice(0, 4),
   apps.slice(4, 7),
@@ -29,22 +30,28 @@ const rows = [
 export default function Landing({ onLaunchSpire }) {
   const [activeApp, setActiveApp] = useState(null);
   const [mounted, setMounted] = useState(false);
+  const timersRef = useRef([]);
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 100);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      timersRef.current.forEach(clearTimeout);
+    };
   }, []);
 
   const handleAppClick = (appName) => {
     setActiveApp(appName);
 
     if (appName === "Spire") {
-      setTimeout(() => {
-        setActiveApp(null);
-        if (onLaunchSpire) onLaunchSpire();
-      }, 600);
+      timersRef.current.push(
+        setTimeout(() => {
+          setActiveApp(null);
+          if (onLaunchSpire) onLaunchSpire();
+        }, 600)
+      );
     } else {
-      setTimeout(() => setActiveApp(null), 800);
+      timersRef.current.push(setTimeout(() => setActiveApp(null), 800));
     }
   };
 
@@ -71,8 +78,8 @@ export default function Landing({ onLaunchSpire }) {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
         }
+
         
-        /* Outer button controls the scale of the entire item (icon + text) */
         .app-btn {
           transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
@@ -83,7 +90,7 @@ export default function Landing({ onLaunchSpire }) {
           transform: scale(0.88);
         }
 
-        /* Inner circle exclusively handles the shadow */
+        
         .app-icon-circle {
           transition: box-shadow 0.3s ease;
         }
@@ -99,10 +106,10 @@ export default function Landing({ onLaunchSpire }) {
         className="relative flex h-screen w-screen flex-col items-center justify-center overflow-hidden"
         style={{ backgroundImage: `url("${DEFAULT_BG_IMAGE}")`, backgroundSize: "cover", backgroundPosition: "center" }}
       >
-        {/* Subtle dark overlay without blur */}
+
         <div className="absolute inset-0 z-0 bg-black/40" />
 
-        {/* App icon grid */}
+
         <div className="relative z-10 flex flex-col items-center gap-8">
           {rows.map((row, rowIdx) => (
             <div key={rowIdx} className="flex items-start justify-center gap-10">
@@ -121,7 +128,7 @@ export default function Landing({ onLaunchSpire }) {
                       animation: mounted ? `iconAppear 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) ${idx * 0.07}s both` : "none",
                     }}
                   >
-                    {/* Icon circle (Shadow applied only here) */}
+
                     <div
                       className="app-icon-circle flex items-center justify-center rounded-full overflow-hidden"
                       style={{
@@ -135,11 +142,13 @@ export default function Landing({ onLaunchSpire }) {
                         <img
                           src={app.iconPath}
                           alt={`${app.name} Logo`}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-cover rounded-full"
                         />
                       )}
                     </div>
-                    {/* Label */}
+
                     <span
                       className="text-xs font-medium tracking-wide"
                       style={{
@@ -157,35 +166,11 @@ export default function Landing({ onLaunchSpire }) {
           ))}
         </div>
 
-        {/* Page dots indicator (Google Material Icon style SVGs) */}
+
         <div className="relative z-10 mt-14 flex items-center gap-2">
-          {/* Active Dot */}
-          <svg
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="w-2.5 h-2.5 text-white/90"
-            style={{ animation: "dotPulse 2s ease-in-out infinite" }}
-          >
-            <circle cx="12" cy="12" r="12" />
-          </svg>
-          
-          {/* Inactive Dot 1 */}
-          <svg
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="w-2.5 h-2.5 text-white/35"
-          >
-            <circle cx="12" cy="12" r="12" />
-          </svg>
-          
-          {/* Inactive Dot 2 */}
-          <svg
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="w-2.5 h-2.5 text-white/35"
-          >
-            <circle cx="12" cy="12" r="12" />
-          </svg>
+          <PageDot active pulse />
+          <PageDot />
+          <PageDot />
         </div>
       </div>
     </>

@@ -1,9 +1,12 @@
-import React, { useRef } from "react";
+import React, { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import TrackCard from "@/components/TrackCard";
-import { GlassIcon } from "@/components/ui/glasscn/glass-icon";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
 import { splitArtistNames } from "@/utils/artistNames";
+import { ArtistProfileImage } from "@/components/ui/MediaImages";
+import { InfiniteCarousel } from "@/components/ui/InfiniteCarousel";
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 export default function HomeView({
   userTracks = [],
@@ -13,54 +16,61 @@ export default function HomeView({
   searchQuery = "",
   playlists = [],
   onAddToPlaylist,
+  onDeleteTrack,
 }) {
   const navigate = useNavigate();
-  const scrollContainerRef = useRef(null);
-  const artistScrollRef = useRef(null);
 
-  const scroll = (direction, ref) => {
-    if (ref?.current) {
-      const scrollAmount = direction === "left" ? -350 : 350;
-      ref.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
-    }
-  };
+  const recentTracks = useMemo(() => {
+    const now = Date.now();
+    return userTracks.filter(
+      (t) => t.uploadedAt && now - new Date(t.uploadedAt).getTime() <= ONE_DAY_MS
+    );
+  }, [userTracks]);
 
-  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-  const recentTracks = userTracks.filter(
-    (t) => t.uploadedAt && Date.now() - new Date(t.uploadedAt).getTime() <= ONE_DAY_MS
-  );
-
-  const artistMap = {};
-  userTracks.forEach((t) => {
-    const names = splitArtistNames(t.artist);
-    if (!names.length) return;
-    names.forEach((name) => {
-      if (
-        name.toLowerCase() === "unknown artist" ||
-        name.toLowerCase() === "unknown"
-      ) {
-        return;
-      }
-      if (!artistMap[name]) {
-        artistMap[name] = {
-          name,
-          photo: t.artistPhotoUrl || "",
-          count: 0,
-        };
-      }
-      artistMap[name].count += 1;
+  const artists = useMemo(() => {
+    const artistMap = {};
+    userTracks.forEach((t) => {
+      const names = splitArtistNames(t.artist);
+      if (!names.length) return;
+      names.forEach((name) => {
+        if (
+          name.toLowerCase() === "unknown artist" ||
+          name.toLowerCase() === "unknown"
+        ) {
+          return;
+        }
+        // Level 1: DB photo (track metadata) wins; remote fallback is
+        // resolved lazily by <ArtistProfileImage> only when missing.
+        const entry =
+          artistMap[name] || (artistMap[name] = { name, photo: "", description: "", count: 0 });
+        if (!entry.photo && t.artistPhotoUrl) {
+          entry.photo = t.artistPhotoUrl;
+        }
+        if (!entry.description && t.artistBio) {
+          entry.description = t.artistBio;
+        }
+        entry.count += 1;
+      });
     });
-  });
-  const artists = Object.values(artistMap).sort((a, b) => b.count - a.count);
+    return Object.values(artistMap).sort((a, b) => b.count - a.count);
+  }, [userTracks]);
 
   const searchTerm = (searchQuery || "").trim().toLowerCase();
-  const filteredTracks = searchTerm
-    ? userTracks.filter(
-        (t) =>
-          (t.title || "").toLowerCase().includes(searchTerm) ||
-          (t.artist || "").toLowerCase().includes(searchTerm)
-      )
-    : [];
+
+  const filteredTracks = useMemo(() => {
+    if (!searchTerm) return [];
+    return userTracks.filter(
+      (t) =>
+        (t.title || "").toLowerCase().includes(searchTerm) ||
+        (t.artist || "").toLowerCase().includes(searchTerm)
+    );
+  }, [userTracks, searchTerm]);
+
+  const filteredArtists = useMemo(() => {
+    if (!searchTerm) return [];
+    return artists.filter((a) => a.name.toLowerCase().includes(searchTerm));
+  }, [artists, searchTerm]);
+
   const hasSearch = searchTerm.length > 0;
 
   return (
@@ -81,6 +91,7 @@ export default function HomeView({
           <input
             type="file"
             accept="audio/*"
+            multiple
             onChange={onFileUpload}
             className="hidden"
             disabled={isUploading}
@@ -94,86 +105,38 @@ export default function HomeView({
           <p className="text-xs text-white/40">Upload an audio file above to get started.</p>
         </div>
       ) : hasSearch ? (
-        <div className="w-full space-y-3">
+        <div className="w-full space-y-6">
           <h2 className="text-lg font-bold tracking-tight text-white">
             Search results for "{searchQuery}"
           </h2>
-          {filteredTracks.length === 0 ? (
-            <p className="text-sm text-white/50">No songs found.</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4">
-              {filteredTracks.map((track) => (
-                <TrackCard
-                  key={`search-${track.id}`}
-                  track={track}
-                  onPlayTrack={onPlayTrack}
-                  playlists={playlists}
-                  onAddToPlaylist={onAddToPlaylist}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <>
-          {artists.length > 0 && (
+          {filteredArtists.length > 0 && (
             <div className="w-full min-w-0 space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">Artists</h2>
-                <div className="flex items-center gap-2">
-                  <GlassIcon
-                    size="sm"
-                    onClick={() => scroll("left", artistScrollRef)}
-                    aria-label="Scroll artists left"
-                    className="text-white"
-                    liquidProps={{ blur: 4, refraction: 4 }}
-                  >
-                    <span className="text-sm">‹</span>
-                  </GlassIcon>
-                  <GlassIcon
-                    size="sm"
-                    onClick={() => scroll("right", artistScrollRef)}
-                    aria-label="Scroll artists right"
-                    className="text-white"
-                    liquidProps={{ blur: 4, refraction: 4 }}
-                  >
-                    <span className="text-sm">›</span>
-                  </GlassIcon>
-                </div>
-              </div>
-
-              <div
-                ref={artistScrollRef}
-                className="no-scrollbar flex w-full min-w-0 flex-nowrap gap-5 overflow-x-auto scroll-smooth pt-1 pb-2"
-              >
-                {artists.map((artist) => {
+              <h3 className="text-sm font-bold uppercase tracking-[0.15em] text-white/60">
+                Artists
+              </h3>
+              <div className="flex flex-wrap gap-5">
+                {filteredArtists.map((artist) => {
                   const initial = (artist.name[0] || "?").toUpperCase();
                   return (
                     <button
-                      key={artist.name}
+                      key={`search-artist-${artist.name}`}
                       type="button"
-                      onClick={() => navigate(`/artist/${encodeURIComponent(artist.name)}`)}
+                      onClick={() =>
+                        navigate(`/artist/${encodeURIComponent(artist.name)}`)
+                      }
                       className="group flex w-28 shrink-0 cursor-pointer flex-col items-center gap-2"
                       aria-label={`Open ${artist.name} page`}
                     >
-                      <div className="relative h-28 w-28 overflow-hidden rounded-full transition-transform group-hover:scale-105">
-                        <div className="relative h-full w-full bg-gradient-to-br from-white/15 to-black/40">
-                          {artist.photo ? (
-                            <img
-                              src={artist.photo}
-                              alt={artist.name}
-                              loading="lazy"
-                              className="absolute inset-0 h-full w-full scale-125 object-cover object-[50%_25%]"
-                              onError={(e) => {
-                                e.currentTarget.remove();
-                              }}
-                            />
-                          ) : (
-                            <span className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white/20 via-white/10 to-black/50 text-5xl font-bold text-white/90 drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">
-                              {initial}
-                            </span>
-                          )}
-                        </div>
+                      <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full border border-white/10 bg-gradient-to-br from-white/15 to-black/40 shadow-lg shadow-black/30 transition-transform group-hover:scale-105">
+                        <ArtistProfileImage
+                          initialSrc={artist.photo || null}
+                          artistName={artist.name}
+                          alt={artist.name}
+                          fallbackInitial={
+                            <span className="text-4xl">{initial}</span>
+                          }
+                          className="absolute left-[-12.5%] top-[-12.5%] h-[125%] w-[125%] rounded-full object-cover object-[50%_28%]"
+                        />
                       </div>
                       <span className="max-w-full truncate text-center text-sm font-medium text-white/70 transition-colors group-hover:text-white">
                         {artist.name}
@@ -184,51 +147,90 @@ export default function HomeView({
               </div>
             </div>
           )}
-
-          <div className="w-full min-w-0 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white">Recently Added</h2>
-              <div className="flex items-center gap-2">
-                <GlassIcon
-                  size="sm"
-                  onClick={() => scroll("left", scrollContainerRef)}
-                  aria-label="Scroll left"
-                  className="text-white"
-                  liquidProps={{ blur: 4, refraction: 4 }}
-                >
-                  <span className="text-sm">‹</span>
-                </GlassIcon>
-                <GlassIcon
-                  size="sm"
-                  onClick={() => scroll("right", scrollContainerRef)}
-                  aria-label="Scroll right"
-                  className="text-white"
-                  liquidProps={{ blur: 4, refraction: 4 }}
-                >
-                  <span className="text-sm">›</span>
-                </GlassIcon>
+          {filteredTracks.length === 0 && filteredArtists.length === 0 ? (
+            <p className="text-sm text-white/50">No results found.</p>
+          ) : filteredTracks.length === 0 ? null : (
+            <div className="w-full min-w-0 space-y-3">
+              <h3 className="text-sm font-bold uppercase tracking-[0.15em] text-white/60">
+                Songs
+              </h3>
+              <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4">
+                {filteredTracks.map((track) => (
+                  <TrackCard
+                    key={`search-${track.id}`}
+                    track={track}
+                    onPlayTrack={onPlayTrack}
+                    playlists={playlists}
+                    onAddToPlaylist={onAddToPlaylist}
+                    onDeleteTrack={onDeleteTrack}
+                  />
+                ))}
               </div>
             </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {artists.length > 0 && (
+            <div className="w-full min-w-0 space-y-3">
+              <h2 className="text-lg font-bold text-white">Artists</h2>
 
-            <div
-              ref={scrollContainerRef}
-              className="no-scrollbar flex w-full min-w-0 flex-nowrap gap-5 overflow-x-auto scroll-smooth pt-1 pb-2"
-            >
-              {recentTracks.map((track) => (
-                <TrackCard
-                  key={`slider-${track.id}`}
-                  track={track}
-                  onPlayTrack={onPlayTrack}
-                  widthClass="w-40 sm:w-48"
-                  playlists={playlists}
-                  onAddToPlaylist={onAddToPlaylist}
-                />
-              ))}
+              <InfiniteCarousel gap={20} storageKey="artists">
+                {artists.map((artist) => {
+                  const initial = (artist.name[0] || "?").toUpperCase();
+                  return (
+                    <button
+                      key={`${artist.name}`}
+                      type="button"
+                      onClick={() =>
+                        navigate(`/artist/${encodeURIComponent(artist.name)}`)
+                      }
+                      className="group flex w-28 shrink-0 cursor-pointer flex-col items-center gap-2"
+                      aria-label={`Open ${artist.name} page`}
+                    >
+                      <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full border border-white/10 bg-gradient-to-br from-white/15 to-black/40 shadow-lg shadow-black/30 transition-transform group-hover:scale-105">
+                        <ArtistProfileImage
+                          initialSrc={artist.photo || null}
+                          artistName={artist.name}
+                          alt={artist.name}
+                          fallbackInitial={
+                            <span className="text-4xl">{initial}</span>
+                          }
+                          className="absolute left-[-12.5%] top-[-12.5%] h-[125%] w-[125%] rounded-full object-cover object-[50%_28%]"
+                        />
+                      </div>
+                      <span className="max-w-full truncate text-center text-sm font-medium text-white/70 transition-colors group-hover:text-white">
+                        {artist.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </InfiniteCarousel>
             </div>
-            {recentTracks.length === 0 && (
+          )}
+
+          <div className="w-full min-w-0 space-y-3">
+              <h2 className="text-lg font-bold text-white">Recently Added</h2>
+
+            {recentTracks.length === 0 ? (
               <p className="text-xs text-white/40">
                 No tracks uploaded in the last day.
               </p>
+            ) : (
+              <InfiniteCarousel gap={20} storageKey="recent">
+                {recentTracks.map((track) => (
+                  <div key={`recent-${track.id}`} className="w-40 shrink-0 sm:w-48">
+                    <TrackCard
+                      track={track}
+                      onPlayTrack={onPlayTrack}
+                      widthClass="w-full"
+                      playlists={playlists}
+                      onAddToPlaylist={onAddToPlaylist}
+                      onDeleteTrack={onDeleteTrack}
+                    />
+                  </div>
+                ))}
+              </InfiniteCarousel>
             )}
           </div>
 
@@ -242,6 +244,7 @@ export default function HomeView({
                   onPlayTrack={onPlayTrack}
                   playlists={playlists}
                   onAddToPlaylist={onAddToPlaylist}
+                  onDeleteTrack={onDeleteTrack}
                 />
               ))}
             </div>

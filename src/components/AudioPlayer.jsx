@@ -1,42 +1,42 @@
 import React, { useEffect, useRef } from "react";
-import { getValidDriveToken } from "@/utils/driveApi";
+import { supabase } from "@/lib/supabaseClient";
+import { parseLRC } from "@/utils/lyricsParser";
 
-export function parseLRC(lrcString) {
-  if (!lrcString || typeof lrcString !== "string") return [];
-  const lines = lrcString.split("\n");
-  const result = [];
-  const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
+async function fetchDriveAudio(driveId, googleAccessToken, supabaseAccessToken) {
 
-  for (const line of lines) {
-    const match = timeRegex.exec(line);
-    if (match) {
-      const minutes = parseInt(match[1], 10);
-      const seconds = parseInt(match[2], 10);
-      const millis = parseInt(match[3].padEnd(3, "0"), 10);
-      const time = minutes * 60 + seconds + millis / 1000;
-      const text = line.replace(timeRegex, "").trim();
-      if (text) {
-        result.push({ time, text });
-      }
+
+  if (googleAccessToken) {
+    try {
+      const directResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`,
+        { headers: { Authorization: `Bearer ${googleAccessToken}` } }
+      );
+      if (directResponse.ok) return await directResponse.blob();
+      console.warn(
+        `[AudioPlayer] Direct Drive fetch blocked (${directResponse.status}) — falling back to proxy...`
+      );
+    } catch (err) {
+      console.warn("[AudioPlayer] Direct Drive fetch failed:", err);
     }
   }
 
-  return result.sort((a, b) => a.time - b.time);
-}
 
-async function fetchDriveAudio(driveId, token) {
-  const valid = (await getValidDriveToken()) || token;
-  if (!valid) throw new Error("No Drive token available.");
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseUrl) throw new Error("VITE_SUPABASE_URL not set");
+  const headers = {};
+  if (supabaseAccessToken) headers.Authorization = `Bearer ${supabaseAccessToken}`;
+  if (supabaseAnonKey) headers.apikey = supabaseAnonKey;
   const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`,
-    { headers: { Authorization: `Bearer ${valid}` } }
+    `${supabaseUrl}/functions/v1/stream-track?trackId=${encodeURIComponent(driveId)}`,
+    { headers }
   );
-  return response;
+  if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
+  return await response.blob();
 }
 
 export default function AudioPlayer({
   activeTrack,
-  googleAccessToken,
   isPlaying,
   volume,
   seekTime,
@@ -45,26 +45,25 @@ export default function AudioPlayer({
   onEnded,
   onLyricsParsed,
   isRepeat = false,
-  onRefreshToken, // now actually used
+  reloadKey = 0,
+  elementRef = null,
 }) {
   const audioRef = useRef(null);
-  // Bumped on every new load request — stale async steps check their token and bail.
   const loadTokenRef = useRef(0);
-  // Which track id the <audio> element currently holds; lets the play/pause
-  // effect avoid calling play() on a stale source while a new one loads.
   const loadedTrackIdRef = useRef(null);
+  const blobUrlRef = useRef(null);
+
+  const latestPropsRef = useRef({ seekTime, isPlaying });
+  latestPropsRef.current = { seekTime, isPlaying };
 
   useEffect(() => {
     let isMounted = true;
     let currentBlobUrl = null;
     const token = ++loadTokenRef.current;
 
-    // Silence whatever was playing immediately — no overlap while the new
-    // source loads.
-    if (audioRef.current) audioRef.current.pause();
-
     async function loadAudioSource() {
       if (!audioRef.current || !activeTrack) return;
+      const audio = audioRef.current;
 
       const driveId =
         activeTrack.driveFileId ||
@@ -74,64 +73,48 @@ export default function AudioPlayer({
       let audioUrl = activeTrack.url || activeTrack.src;
 
       if (!audioUrl && driveId) {
-        if (!googleAccessToken) {
-          console.error("[AudioPlayer] Google Access Token missing. Cannot play track from Drive.");
-          return;
-        }
-
         try {
-          let response = await fetchDriveAudio(driveId, googleAccessToken);
+          let googleToken = "";
+          let accessToken = "";
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
 
-          // Token expired — refresh once and retry automatically
-          if (response.status === 401) {
-            console.warn("[AudioPlayer] Token expired (401). Attempting refresh...");
-            if (typeof onRefreshToken === "function") {
-              const freshToken = await onRefreshToken();
-              if (freshToken) {
-                response = await fetchDriveAudio(driveId, freshToken);
-              }
-            }
+
+            googleToken = session?.provider_token || "";
+            accessToken = session?.access_token || "";
+          } catch {
+            accessToken = "";
           }
-
-          if (!response.ok) {
-            throw new Error(`Drive fetch error: ${response.status} ${response.statusText}`);
-          }
-
-          // A newer track was requested while we were fetching — this load is stale.
-          if (!isMounted || loadTokenRef.current !== token) return;
-
-          const rawBlob = await response.blob();
-          const mimeType =
-            rawBlob.type && rawBlob.type !== "application/octet-stream"
-              ? rawBlob.type
-              : "audio/mpeg";
-          const audioBlob =
-            rawBlob.type === mimeType ? rawBlob : new Blob([rawBlob], { type: mimeType });
-
+          const audioBlob = await fetchDriveAudio(driveId, googleToken, accessToken);
           currentBlobUrl = URL.createObjectURL(audioBlob);
           audioUrl = currentBlobUrl;
         } catch (err) {
-          console.error("[AudioPlayer] Failed to read audio file from Google Drive:", err);
+          console.error("[AudioPlayer] Failed to read audio file from Google Drive proxy:", err);
           return;
         }
       }
 
       if (!audioUrl || !isMounted || loadTokenRef.current !== token) return;
 
-      audioRef.current.src = audioUrl;
-      audioRef.current.load();
+      audio.src = audioUrl;
+      audio.load();
       loadedTrackIdRef.current = activeTrack?.id || null;
+      if (onDurationChange) onDurationChange(0);
+
+      if (blobUrlRef.current && blobUrlRef.current !== currentBlobUrl) {
+        URL.revokeObjectURL(blobUrlRef.current);
+      }
+      blobUrlRef.current = currentBlobUrl;
 
       const waitForReady = () =>
-        new Promise((resolve) => {
-          const audio = audioRef.current;
+        new Promise((resolve, reject) => {
           const onReady = () => {
             cleanup();
             resolve();
           };
           const onError = () => {
             cleanup();
-            resolve();
+            reject(new Error("Audio source failed to load"));
           };
           const cleanup = () => {
             audio.removeEventListener("canplay", onReady);
@@ -141,53 +124,56 @@ export default function AudioPlayer({
           audio.addEventListener("error", onError);
         });
 
-      waitForReady().then(() => {
-        // This load got superseded — discard it silently.
-        if (!isMounted || loadTokenRef.current !== token) return;
+      try {
+        await waitForReady();
+      } catch (err) {
+        if (isMounted && loadTokenRef.current === token) {
+          console.error("[AudioPlayer] Source failed to load:", err);
+        }
+        return;
+      }
 
-        // Apply a pending seek (radio live-resume) once the track is ready.
-        if (typeof seekTime === "number" && !isNaN(seekTime) && seekTime > 0) {
-          try {
-            audioRef.current.currentTime = seekTime;
-          } catch {
-            /* seek can throw before metadata is fully ready — ignore */
+      if (!isMounted || loadTokenRef.current !== token) return;
+
+      const { seekTime: pendingSeek, isPlaying: shouldPlay } = latestPropsRef.current;
+      if (typeof pendingSeek === "number" && !isNaN(pendingSeek) && pendingSeek > 0) {
+        try {
+          audio.currentTime = pendingSeek;
+        } catch {}
+      }
+
+      if (shouldPlay) {
+        audio.play().catch((err) => {
+          if (err.name !== "AbortError") {
+            console.error("[AudioPlayer] Playback start error:", err);
           }
-        }
-
-        if (isPlaying) {
-          audioRef.current.play().catch((err) => {
-            if (err.name !== "AbortError") {
-              console.error("[AudioPlayer] Playback start error:", err);
-            }
-          });
-        }
-      });
+        });
+      }
     }
 
     loadAudioSource();
 
     return () => {
       isMounted = false;
-      if (currentBlobUrl) {
-        const url = currentBlobUrl;
-        setTimeout(() => {
-          URL.revokeObjectURL(url);
-        }, 10000);
+      if (currentBlobUrl && blobUrlRef.current !== currentBlobUrl) {
+        URL.revokeObjectURL(currentBlobUrl);
       }
     };
-  }, [
-    activeTrack?.id,
-    activeTrack?.driveFileId,
-    activeTrack?.drive_file_id,
-    googleAccessToken,
-  ]);
+  }, [activeTrack, reloadKey, onDurationChange]);
+
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!audioRef.current || !audioRef.current.src) return;
 
     if (isPlaying) {
-      // Only play if the element is actually holding the requested track —
-      // otherwise the load effect will play it once ready (load-token guarded).
       if (loadedTrackIdRef.current !== activeTrack?.id) return;
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
@@ -237,8 +223,11 @@ export default function AudioPlayer({
     }
   }, [activeTrack, onLyricsParsed]);
 
+  const isRepeatRef = useRef(isRepeat);
+  isRepeatRef.current = isRepeat;
+
   const handleEnded = () => {
-    if (isRepeat && audioRef.current) {
+    if (isRepeatRef.current && audioRef.current) {
       audioRef.current.currentTime = 0;
       audioRef.current.play().catch((err) => {
         if (err.name !== "AbortError") console.error("[AudioPlayer] Repeat play error:", err);
@@ -251,7 +240,10 @@ export default function AudioPlayer({
 
   return (
     <audio
-      ref={audioRef}
+      ref={(el) => {
+        audioRef.current = el;
+        if (elementRef) elementRef.current = el;
+      }}
       onTimeUpdate={() => {
         if (audioRef.current && onTimeUpdate) {
           onTimeUpdate(audioRef.current.currentTime);

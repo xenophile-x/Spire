@@ -1,7 +1,10 @@
 import React, { useRef, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { GlassCard } from "@/components/ui/glasscn/glass-card";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
 import { GlassButton } from "@/components/ui/glasscn/glass-button";
+import { useLibrary } from "@/context/LibraryContext";
+import { LibrarySharing } from "@/components/LibrarySharing";
 import "material-symbols/rounded.css";
 
 function ListenTogetherCard({
@@ -89,7 +92,7 @@ function ListenTogetherCard({
       </div>
 
       <div className="divide-y divide-white/10 border-t border-white/10">
-        {/* Discord connection */}
+
         <div className="flex items-center justify-between gap-3 px-5 py-3">
           <div className="flex min-w-0 items-center gap-3">
             {discordUser ? (
@@ -154,7 +157,7 @@ function ListenTogetherCard({
           </div>
         )}
 
-        {/* Room management */}
+
         <div className="space-y-3 px-5 py-4">
           {!isInRoom ? (
             <>
@@ -278,6 +281,8 @@ export default function SettingsView({
   user,
   isUploading,
   onBackgroundUpload,
+  bgMediaType = "all",
+  onChangeBgMediaType,
   onSignOut,
   listen,
   discordUser,
@@ -286,11 +291,23 @@ export default function SettingsView({
   onConnectDiscord,
 }) {
   const fileInputRef = useRef(null);
+  const navigate = useNavigate();
+  const { resyncArtistPhotos, artistSyncState } = useLibrary();
+  const syncStatus = artistSyncState.status;
+  const syncSubtitle =
+    syncStatus === "idle"
+      ? "Refresh artist photos and bios from iTunes & Wikipedia"
+      : syncStatus === "syncing"
+        ? `Syncing… ${artistSyncState.done}/${artistSyncState.total} · ${artistSyncState.current}`
+        : syncStatus === "done"
+          ? `Done — ${artistSyncState.updated} artist${artistSyncState.updated === 1 ? "" : "s"} updated`
+          : "Sync failed — try again";
 
   useEffect(() => {
+    const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = "unset";
+      document.body.style.overflow = prev || "";
     };
   }, []);
 
@@ -299,8 +316,10 @@ export default function SettingsView({
   };
 
   const userAvatar = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
-  const userName = user?.user_metadata?.full_name || "Danny Rico";
-  const userEmail = user?.email || "daniel_rico1@icloud.com";
+
+
+  const userName = user?.user_metadata?.full_name || "Guest";
+  const userEmail = user?.email || "";
 
   return (
     <>
@@ -362,7 +381,7 @@ export default function SettingsView({
                 </span>
                 <div className="flex flex-col">
                   <span className="text-xs font-medium text-white/90 group-hover:text-white">
-                    Change Wallpaper
+                    Change Scene
                   </span>
                   <span className="text-[10px] text-white/50">
                     {isUploading ? "Uploading image..." : "Upload custom background"}
@@ -373,6 +392,73 @@ export default function SettingsView({
                 chevron_right
               </span>
             </button>
+
+            <button
+              type="button"
+              onClick={resyncArtistPhotos}
+              disabled={syncStatus === "syncing"}
+              className="group flex w-full cursor-pointer items-center justify-between px-5 py-3 text-left transition-all hover:bg-white/10 active:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <div className="flex items-center gap-3">
+                <span className={`material-symbols-rounded text-lg text-white/80 group-hover:text-white ${syncStatus === "syncing" ? "animate-spin" : ""}`}>
+                  {syncStatus === "syncing" ? "progress_activity" : "sync"}
+                </span>
+                <div className="flex flex-col">
+                  <span className="text-xs font-medium text-white/90 group-hover:text-white">
+                    Sync Artist Photos
+                  </span>
+                  <span className="text-[10px] text-white/50">{syncSubtitle}</span>
+                </div>
+              </div>
+              <span className="material-symbols-rounded text-base text-white/40 group-hover:text-white/70">
+                chevron_right
+              </span>
+            </button>
+
+
+            <div className="flex items-center justify-between gap-3 px-5 py-3">
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-rounded text-lg text-white/80">
+                  smart_display
+                </span>
+                <div className="flex flex-col">
+                  <span className="text-xs font-medium text-white/90">
+                    Background Media
+                  </span>
+                  <span className="text-[10px] text-white/50">
+                    What the theme button cycles through
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1 rounded-full border border-white/20 bg-white/10 p-1 backdrop-blur-md [--liquid-glass-rim-width:0.5px]">
+                {[
+                  { value: "video", label: "Videos", icon: "movie" },
+                  { value: "image", label: "Images", icon: "image" },
+                  { value: "all", label: "All", icon: "grid_view" },
+                ].map(({ value, label, icon }) => {
+                  const isActive = bgMediaType === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => onChangeBgMediaType?.(value)}
+                      aria-pressed={isActive}
+                      className={`flex cursor-pointer items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide transition-all ${
+                        isActive
+                          ? "bg-white/25 text-white shadow-sm"
+                          : "text-white/60 hover:bg-white/15 hover:text-white/90"
+                      }`}
+                    >
+                      <span className="material-symbols-rounded text-xs leading-none">
+                        {icon}
+                      </span>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <button
               type="button"
@@ -393,6 +479,8 @@ export default function SettingsView({
           />
         </GlassCard>
 
+        <LibrarySharing user={user} />
+
         <ListenTogetherCard
           listen={listen}
           discordUser={discordUser}
@@ -400,6 +488,24 @@ export default function SettingsView({
           discordError={discordError}
           onConnectDiscord={onConnectDiscord}
         />
+
+        <div className="flex items-center justify-center gap-4 pb-2 pt-1">
+          <button
+            type="button"
+            onClick={() => navigate("/termsofservice")}
+            className="text-[11px] font-medium text-white/50 transition-colors hover:text-white/90"
+          >
+            Terms of Service
+          </button>
+          <span className="h-3 w-px bg-white/20" />
+          <button
+            type="button"
+            onClick={() => navigate("/privacypolicy")}
+            className="text-[11px] font-medium text-white/50 transition-colors hover:text-white/90"
+          >
+            Privacy Policy
+          </button>
+        </div>
       </div>
     </>
   );

@@ -5,10 +5,9 @@ import {
   getDriveTokenTimestamp,
 } from "./auth";
 
-const TOKEN_MAX_AGE_MS = 50 * 60 * 1000; // refresh a bit before the real ~1hr expiry
+const TOKEN_MAX_AGE_MS = 50 * 60 * 1000;
 
-// Calls the refresh-google-token Edge Function, which exchanges the stored
-// refresh_token (server-side) for a genuinely new Google access_token.
+
 export async function refreshDriveAccessToken() {
   const {
     data: { session },
@@ -50,7 +49,7 @@ export const fetchDriveApi = async (endpoint, options = {}, isRetry = false) => 
     headers: { Authorization: `Bearer ${token}`, ...options.headers },
   });
 
-  // Belt-and-suspenders: even if our staleness check missed it, retry once on a real 401
+
   if (response.status === 401 && !isRetry) {
     const newToken = await refreshDriveAccessToken();
     if (newToken) return fetchDriveApi(endpoint, options, true);

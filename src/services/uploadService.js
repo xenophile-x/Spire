@@ -5,7 +5,10 @@ export const uploadAudioToDrive = async (file, metadata = {}, isRetry = false) =
   if (!token) throw new Error("Authentication required.");
 
   const fileMetadata = {
-    name: metadata.title ? `${metadata.artist} - ${metadata.title}` : file.name,
+    name:
+      metadata.title && metadata.artist
+        ? `${metadata.artist} - ${metadata.title}`
+        : file.name || "upload",
     mimeType: file.type || "audio/mpeg",
     description: JSON.stringify(metadata),
   };

@@ -1,9 +1,35 @@
 
 
 import React, { useEffect, useState, useRef } from "react";
+import "material-symbols/rounded.css";
 import TrackCard from "@/components/TrackCard";
 import { getRecommendedTracks } from "@/utils/recommend";
 import { GlassIcon } from "@/components/ui/glasscn/glass-icon";
+
+function ScrollControls({ onLeft, onRight }) {
+  return (
+    <div className="flex items-center gap-2">
+      <GlassIcon
+        size="sm"
+        onClick={onLeft}
+        aria-label="Scroll left"
+        className="text-white"
+        liquidProps={{ blur: 4, refraction: 4 }}
+      >
+        <span className="material-symbols-rounded text-base leading-none select-none pointer-events-none">chevron_left</span>
+      </GlassIcon>
+      <GlassIcon
+        size="sm"
+        onClick={onRight}
+        aria-label="Scroll right"
+        className="text-white"
+        liquidProps={{ blur: 4, refraction: 4 }}
+      >
+        <span className="material-symbols-rounded text-base leading-none select-none pointer-events-none">chevron_right</span>
+      </GlassIcon>
+    </div>
+  );
+}
 
 export default function ExploreView({
   userTracks = [],
@@ -12,6 +38,7 @@ export default function ExploreView({
   continueListening = [],
   playlists = [],
   onAddToPlaylist,
+  onDeleteTrack,
   listeningHistory = [],
 }) {
   const [recommendedTracks, setRecommendedTracks] = useState([]);
@@ -39,29 +66,6 @@ export default function ExploreView({
       ref.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
     }
   };
-
-  const ScrollControls = ({ onLeft, onRight }) => (
-    <div className="flex items-center gap-2">
-      <GlassIcon
-        size="sm"
-        onClick={onLeft}
-        aria-label="Scroll left"
-        className="text-white"
-        liquidProps={{ blur: 4, refraction: 4 }}
-      >
-        <span className="text-sm">‹</span>
-      </GlassIcon>
-      <GlassIcon
-        size="sm"
-        onClick={onRight}
-        aria-label="Scroll right"
-        className="text-white"
-        liquidProps={{ blur: 4, refraction: 4 }}
-      >
-        <span className="text-sm">›</span>
-      </GlassIcon>
-    </div>
-  );
 
   return (
     <div className="w-full min-w-0 space-y-8 text-white select-none">
@@ -94,14 +98,15 @@ export default function ExploreView({
               ref={recScrollRef}
               className="no-scrollbar flex w-full min-w-0 flex-nowrap gap-5 overflow-x-auto scroll-smooth pt-1 pb-2"
             >
-              {recommendedTracks.map((track) => (
+                {recommendedTracks.map((track) => (
                 <TrackCard
                   key={`rec-${track.id}`}
                   track={track}
                   onPlayTrack={onPlayTrack}
-                  widthClass="w-40 sm:w-48"
+                  widthClass="w-48 sm:w-56"
                   playlists={playlists}
                   onAddToPlaylist={onAddToPlaylist}
+                  onDeleteTrack={onDeleteTrack}
                 />
               ))}
             </div>
@@ -129,9 +134,10 @@ export default function ExploreView({
                     key={`continue-${track.id}-${index}`}
                     track={track}
                     onPlayTrack={onPlayTrack}
-                    widthClass="w-40 sm:w-48"
+                    widthClass="w-48 sm:w-56"
                     playlists={playlists}
                     onAddToPlaylist={onAddToPlaylist}
+                    onDeleteTrack={onDeleteTrack}
                   />
                 ))}
               </div>

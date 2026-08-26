@@ -30,22 +30,18 @@ export function calculateTrackAffinity(trackA, trackB) {
 export function getRecommendedTracks(targetTrack, allTracks, listeningHistory = [], limit = 10) {
   if (!allTracks || allTracks.length === 0) return [];
 
-  // Defensive guard: `= []` only covers `undefined`. If a caller passes
-  // null, or an un-unwrapped Supabase response ({ data, error }) instead
-  // of the array itself, listeningHistory won't be an array here — coerce
-  // it so .forEach never crashes. If you're hitting this branch in
-  // practice, fix the call site to pass the actual array (e.g. `.data`).
+
   const history = Array.isArray(listeningHistory) ? listeningHistory : [];
 
-  // Filter out the target track from candidates
+
   const otherTracks = allTracks.filter((track) => track.id !== targetTrack?.id);
 
-  // If no listening history and no targetTrack, just slice candidates
+
   if (history.length === 0 && !targetTrack) {
     return otherTracks.slice(0, limit);
   }
 
-  // 1. Build preferences from listening history
+
   const genreCounts = {};
   const artistCounts = {};
   const totalHistory = history.length || 1;
@@ -54,7 +50,7 @@ export function getRecommendedTracks(targetTrack, allTracks, listeningHistory = 
     const genre = (item.genre || "Unknown").toLowerCase();
     genreCounts[genre] = (genreCounts[genre] || 0) + 1;
 
-    // Resolve artist from allTracks
+
     const matchedTrack = allTracks.find((t) => t.id === item.track_id);
     if (matchedTrack) {
       const artist = (matchedTrack.artist || "").toLowerCase();
@@ -64,23 +60,23 @@ export function getRecommendedTracks(targetTrack, allTracks, listeningHistory = 
     }
   });
 
-  // 2. Score candidate tracks
+
   const scoredTracks = otherTracks.map((track) => {
     let score = 0;
     const trackGenre = (track.genre || track.primary_genre || "").toLowerCase();
     const trackArtist = (track.artist || track.canonical_artist || "").toLowerCase();
 
-    // 0.6 weight for matching listening history genres
+
     if (trackGenre && genreCounts[trackGenre]) {
       score += 0.6 * (genreCounts[trackGenre] / totalHistory);
     }
 
-    // 0.4 weight for matching listening history artists
+
     if (trackArtist && artistCounts[trackArtist]) {
       score += 0.4 * (artistCounts[trackArtist] / totalHistory);
     }
 
-    // 0.5 weight for matching target track affinity
+
     if (targetTrack) {
       const affinity = calculateTrackAffinity(targetTrack, track);
       score += 0.5 * affinity;
@@ -92,7 +88,7 @@ export function getRecommendedTracks(targetTrack, allTracks, listeningHistory = 
     };
   });
 
-  // Sort by affinityScore descending
+
   scoredTracks.sort((a, b) => b.affinityScore - a.affinityScore);
 
   return scoredTracks.slice(0, limit);

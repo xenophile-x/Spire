@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { buildStationQueue } from "@/utils/stationQueue";
 import { getStationAnchor, setStationAnchor } from "@/utils/radioTimeline";
 
-const trackDuration = (t) => t.duration_seconds || t.duration || 0;
+const trackDuration = (t) => Math.max(1, t.duration_seconds || t.duration || 1);
 
 export function useRadioBroadcast(userTracks) {
   const tuneIn = useCallback(
@@ -13,7 +13,7 @@ export function useRadioBroadcast(userTracks) {
       const anchor = getStationAnchor(station.id);
 
       if (!anchor) {
-        // Never tuned in this tab session — start fresh
+
         setStationAnchor(station.id, { trackIndex: 0, offsetSeconds: 0 });
         return { track: queue[0], offsetSeconds: 0 };
       }
@@ -21,12 +21,25 @@ export function useRadioBroadcast(userTracks) {
       let index = anchor.trackIndex % queue.length;
       let elapsed = (Date.now() - anchor.trackStartAt) / 1000;
 
-      // Consume elapsed time across however many tracks "played" while you were away
+
+      const totalDuration = queue.reduce(
+        (sum, t) => sum + trackDuration(t),
+        0
+      );
+      if (totalDuration > 0 && elapsed >= totalDuration) {
+        elapsed %= totalDuration;
+      }
+
+
       let guard = 0;
       while (elapsed >= trackDuration(queue[index]) && guard < queue.length * 3) {
         elapsed -= trackDuration(queue[index]);
         index = (index + 1) % queue.length;
         guard++;
+      }
+      if (guard >= queue.length * 3) {
+
+        elapsed = Math.min(elapsed, Math.max(0, trackDuration(queue[index]) - 1));
       }
 
       setStationAnchor(station.id, { trackIndex: index, offsetSeconds: elapsed });

@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* --- SF Pro Display (bundled in src/assets) --- */
+
 @font-face {
   font-family: "SF Pro Display";
   src: url("./assets/SFPRODISPLAYREGULAR.OTF") format("opentype");
@@ -228,22 +228,31 @@ body,
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.85);
   border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 1);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.85) rgba(255, 255, 255, 0.08);
 }
 
 @utility glance {
@@ -280,4 +289,77 @@ body,
 
 @utility glance-angle-* {
   --glance-angle: calc(--value(number) * 1deg);
+}
+
+
+@keyframes blob-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(24px, -32px) scale(1.12);
+  }
+  66% {
+    transform: translate(-18px, 22px) scale(0.94);
+  }
+}
+
+@utility animate-blob {
+  animation: blob-drift 12s ease-in-out infinite;
+}
+
+@utility animate-blob-reverse {
+  animation: blob-drift 14s ease-in-out infinite reverse;
+}
+
+
+@utility glass-rim-default {
+  --liquid-glass-rim-light: rgba(255, 255, 255, 0.5);
+  --liquid-glass-rim-width: 1px;
+}
+
+@utility glass-rim-bright {
+  --liquid-glass-rim-light: rgba(255, 255, 255, 0.6);
+  --liquid-glass-rim-width: 1px;
+}
+
+
+@supports (corner-shape: squircle) {
+  *,
+  ::before,
+  ::after {
+    corner-shape: squircle;
+  }
+
+
+  img,
+  video,
+  canvas,
+  iframe {
+    corner-shape: round;
+  }
+
+  .overflow-hidden,
+  .overflow-auto,
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-x-clip,
+  .overflow-y-clip {
+    corner-shape: round;
+  }
+
+  .rounded-full,
+  .rounded-t-full,
+  .rounded-r-full,
+  .rounded-b-full,
+  .rounded-l-full,
+  .rounded-s-full,
+  .rounded-e-full,
+  .rounded-ss-full,
+  .rounded-se-full,
+  .rounded-es-full,
+  .rounded-ee-full {
+    corner-shape: round;
+  }
 }

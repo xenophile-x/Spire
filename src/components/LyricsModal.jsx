@@ -1,7 +1,5 @@
-
-
-import React, { useEffect, useRef, useState } from "react";
-import { parseLRC, getActiveLyricIndex } from "@/utils/lyricsParser";
+import React from "react";
+import SyncedLyrics from "@/components/SyncedLyrics";
 import { GlassCard } from "@/components/ui/glasscn/glass-card";
 import { GlassButton } from "@/components/ui/glasscn/glass-button";
 
@@ -12,34 +10,9 @@ export default function LyricsModal({
   currentTime,
   onSeek,
 }) {
-  const [lyrics, setLyrics] = useState([]);
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const containerRef = useRef(null);
-  const activeLineRef = useRef(null);
-
-  useEffect(() => {
-    const rawLrc = activeTrack?.synced_lyrics || activeTrack?.syncedLyrics || "";
-    const parsed = parseLRC(rawLrc);
-    setLyrics(parsed);
-  }, [activeTrack]);
-
-  useEffect(() => {
-    if (lyrics.length > 0) {
-      const idx = getActiveLyricIndex(lyrics, currentTime);
-      setActiveIndex(idx);
-    }
-  }, [currentTime, lyrics]);
-
-  useEffect(() => {
-    if (activeLineRef.current && containerRef.current) {
-      activeLineRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }
-  }, [activeIndex]);
-
   if (!isOpen) return null;
+
+  const rawLrc = activeTrack?.synced_lyrics || activeTrack?.syncedLyrics || "";
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 fixed inset-x-0 bottom-24 z-50 flex justify-center px-4 duration-300 transition-all">
@@ -66,36 +39,21 @@ export default function LyricsModal({
           </GlassButton>
         </div>
 
-        <div
-          ref={containerRef}
-          className="scrollbar-none flex-1 space-y-4 overflow-y-auto px-8 py-4 text-center"
-        >
-          {lyrics.length === 0 ? (
-            <div className="py-12 text-sm font-medium italic text-white/40">
-              No synced lyrics available for this track.
-            </div>
-          ) : (
-            lyrics.map((line, idx) => {
-              const isActive = idx === activeIndex;
-              return (
-                <p
-                  key={idx}
-                  ref={isActive ? activeLineRef : null}
-                  onClick={() => onSeek && onSeek(line.time)}
-                  className={`text-md cursor-pointer font-bold transition-all duration-300 select-none ${
-                    isActive
-                      ? "scale-100 text-white opacity-100 drop-shadow-[0_0_12px_rgba(255,255,255,0.6)]"
-                      : "text-base text-white/30 hover:text-white/60"
-                  }`}
-                >
-                  {line.text}
-                </p>
-              );
-            })
-          )}
-        </div>
+        <SyncedLyrics
+          syncedLyrics={rawLrc}
+          currentTime={currentTime}
+          onSeek={onSeek}
+          emptyMessage="No synced lyrics available for this track."
+          containerClassName="scrollbar-none flex-1 space-y-4 overflow-y-auto px-8 py-4 text-center"
+          lineClassName={(index, isActive) =>
+            `cursor-pointer font-bold transition-all duration-300 select-none ${
+              isActive
+                ? "scale-100 text-white opacity-100 drop-shadow-[0_0_12px_rgba(255,255,255,0.6)]"
+                : "text-base text-white/30 hover:text-white/60"
+            }`
+          }
+        />
       </GlassCard>
     </div>
   );
 }
-
