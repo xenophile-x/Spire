@@ -1,4 +1,5 @@
 import { DiscordSDK } from "@discord/embedded-app-sdk";
+import { supabase } from "@/lib/supabaseClient";
 
 const CLIENT_ID = import.meta.env.VITE_DISCORD_CLIENT_ID;
 const READY_TIMEOUT_MS = 6000;
@@ -64,6 +65,16 @@ export async function connectDiscord() {
   );
 
   currentUser = auth.user;
+
+  // Link Discord ID to Supabase user for bot access
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user && auth.user?.id) {
+      await supabase.from('users').update({ discord_id: auth.user.id }).eq('id', user.id);
+    }
+  } catch (err) {
+    console.warn("[Discord] Failed to link Discord ID:", err);
+  }
 
   try {
     await sdk.commands.setActivity({

@@ -1,22 +1,54 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
-const { google } = require('googleapis');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates]
 });
 
-const drive = google.drive({ version: 'v3', auth: process.env.GOOGLE_DRIVE_API_KEY });
 const player = createAudioPlayer();
 const queue = new Map();
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+async function getUserAccessToken(discordId) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/get-drive-access-token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({ discord_id: discordId }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to get access token');
+  }
+  const data = await res.json();
+  return data.access_token;
+}
+
+async function driveRequest(accessToken, endpoint, options = {}) {
+  const res = await fetch(`https://www.googleapis.com${endpoint}`, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+  if (!res.ok) throw new Error(`Drive API error: ${res.status}`);
+  return res.json();
+}
 
 function getQueue(guildId) {
   if (!queue.has(guildId)) queue.set(guildId, { tracks: [], current: null, playing: false });
   return queue.get(guildId);
 }
 
-function playNext(guildId, connection) {
+function playNext(guildId, connection, accessToken) {
   const q = getQueue(guildId);
   if (q.tracks.length === 0) {
     q.playing = false;
@@ -28,35 +60,36 @@ function playNext(guildId, connection) {
   q.playing = true;
 
   const streamUrl = `https://drive.google.com/uc?export=download&id=${track.id}`;
-  const resource = createAudioResource(streamUrl);
+  const resource = createAudioResource(streamUrl, { inlineVolume: true });
   connection.subscribe(player);
   player.play(resource);
 }
 
-player.on(AudioPlayerStatus.Idle, () => {
+player.on(AudioPlayerStatus.Idle, async () => {
   for (const [guildId, connection] of client.voice.adapters) {
     const q = getQueue(guildId);
     if (q.playing && q.tracks.length > 0) {
-      playNext(guildId, connection);
+      try {
+        const accessToken = await getUserAccessToken(q.ownerDiscordId);
+        playNext(guildId, connection, accessToken);
+      } catch (err) {
+        console.error('Auto-play next failed:', err);
+      }
     }
   }
 });
 
 client.on('interactionCreate', async interaction => {
+  const discordId = interaction.user.id;
+
   if (interaction.isAutocomplete()) {
     const focusedValue = interaction.options.getFocused();
     if (!focusedValue) return interaction.respond([]);
 
     try {
-      const res = await drive.files.list({
-        q: `name contains '${focusedValue}' and mimeType contains 'audio/'`,
-        fields: 'files(id, name)',
-        pageSize: 5,
-      });
-      const choices = res.data.files.map(file => ({
-        name: file.name,
-        value: file.id
-      }));
+      const accessToken = await getUserAccessToken(discordId);
+      const data = await driveRequest(accessToken, `/drive/v3/files?q=${encodeURIComponent(`name contains '${focusedValue}' and mimeType contains 'audio/'`)}&fields=files(id,name)&pageSize=5`);
+      const choices = (data.files || []).map(file => ({ name: file.name, value: file.id }));
       await interaction.respond(choices);
     } catch (err) {
       console.error('Autocomplete error:', err);
@@ -81,22 +114,24 @@ client.on('interactionCreate', async interaction => {
   }) : null);
 
   const q = getQueue(guildId);
+  q.ownerDiscordId = discordId;
 
   if (commandName === 'play') {
     const fileId = interaction.options.getString('query');
     await interaction.deferReply();
 
     try {
-      const fileRes = await drive.files.get({ fileId, fields: 'id, name' });
-      q.tracks.push({ id: fileRes.data.id, name: fileRes.data.name });
+      const accessToken = await getUserAccessToken(discordId);
+      const fileData = await driveRequest(accessToken, `/drive/v3/files/${fileId}?fields=id,name`);
+      q.tracks.push({ id: fileData.id, name: fileData.name });
 
       if (!q.playing) {
-        playNext(guildId, connection);
+        playNext(guildId, connection, accessToken);
       }
-      await interaction.editReply(`🎶 Added to queue: **${fileRes.data.name}**`);
+      await interaction.editReply(`🎶 Added to queue: **${fileData.name}**`);
     } catch (err) {
       console.error('Play error:', err);
-      await interaction.editReply('Failed to play track.');
+      await interaction.editReply('Failed to play track. Connect Google Drive in Spire web app first.');
     }
   }
 
