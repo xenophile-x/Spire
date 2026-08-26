@@ -1,6 +1,12 @@
 require('dotenv').config();
+const express = require('express');
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
+
+const app = express();
+app.get('/health', (_, res) => res.send('OK'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Health server on ${PORT}`));
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates]
