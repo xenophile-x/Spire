@@ -10,6 +10,7 @@ import { trackMatchesArtist } from "@/utils/artistNames";
 import { getStationAnchor, setStationAnchor } from "@/utils/radioTimeline";
 import { RADIO_STATIONS } from "@/constants/radioStations";
 import { recordListen } from "@/services/supabaseService";
+import { preloadAudio } from "@/utils/audioSource";
 
 
 const PlayerTimeContext = React.createContext({ currentTime: 0 });
@@ -401,6 +402,16 @@ export function PlayerProvider({ children }) {
       !recommendedPlaylist || Date.now() - recommendedGeneratedAt >= 24 * 60 * 60 * 1000;
     if (needsRefresh) generateRecommended(Boolean(recommendedPlaylist));
   }, [userTracks, recommendedPlaylist, recommendedGeneratedAt, generateRecommended]);
+
+  useEffect(() => {
+    if (!activeTrack || isRadioMode) return;
+    const queue = getActiveQueue();
+    if (queue.length === 0) return;
+    const idx = queue.findIndex((t) => t.id === activeTrack.id);
+    if (idx < 0) return;
+    const next = queue[(idx + 1) % queue.length];
+    preloadAudio(next?.driveFileId || next?.drive_file_id);
+  }, [activeTrack, isRadioMode, getActiveQueue]);
 
   const value = useMemo(
     () => ({

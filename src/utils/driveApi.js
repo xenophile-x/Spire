@@ -4,6 +4,7 @@ import {
   setDriveAccessToken,
   getDriveTokenTimestamp,
 } from "./auth";
+import { getGoogleAccessToken } from "@/lib/googleTokenClient";
 
 const TOKEN_MAX_AGE_MS = 50 * 60 * 1000;
 
@@ -18,13 +19,34 @@ export async function refreshDriveAccessToken() {
     headers: { Authorization: `Bearer ${session.access_token}` },
   });
 
-  if (error || !data?.access_token) {
-    console.warn("[Drive] Refresh failed:", error?.message || data?.error);
-    return null;
+  if (!error && data?.access_token) {
+    setDriveAccessToken(data.access_token);
+    return data.access_token;
   }
 
-  setDriveAccessToken(data.access_token);
-  return data.access_token;
+  // Supabase's managed Google OAuth never gives us a provider refresh token,
+  // so server-side refresh fails after the first hour. Fall back to silently
+  // minting a fresh short-lived token in-browser (works while the tab is open
+  // and the user's Google session persists), and mirror it server-side so
+  // stream-track keeps serving shared libraries.
+  console.warn("[Drive] Server-side refresh failed:", error?.message || data?.error);
+
+  try {
+    const token = await getGoogleAccessToken();
+    setDriveAccessToken(token);
+
+    supabase.functions
+      .invoke("store-google-token", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: { access_token: token, expires_in: 55 * 60 },
+      })
+      .catch((err) => console.warn("[Drive] Failed to persist refreshed token:", err));
+
+    return token;
+  } catch (err) {
+    console.warn("[Drive] Browser-side Google token mint failed:", err);
+    return null;
+  }
 }
 
 function isTokenStale() {

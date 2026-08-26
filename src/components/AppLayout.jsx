@@ -19,6 +19,7 @@ import AppRoutes from "@/routes/AppRoutes";
 import { processAudioUpload } from "@/services/uploadPipeline";
 import { deleteUserTrack } from "@/services/supabaseService";
 import { uploadBackgroundToDrive, DriveQuotaError } from "@/services/driveService";
+import { getValidDriveToken } from "@/utils/driveApi";
 import { connectDiscord, setDiscordActivity, getDiscordUser } from "@/services/discordService";
 import { useListenTogether } from "@/hooks/useListenTogether";
 import { supabase } from "@/lib/supabaseClient";
@@ -114,7 +115,7 @@ const BG_MEDIA_TYPES = new Set(["all", "video", "image"]);
 
 
 export default function AppLayout() {
-  const { user, googleAccessToken, signInWithGoogle, signOut } = useAuth();
+  const { user, signInWithGoogle, signOut } = useAuth();
   const {
     userTracks,
     setUserTracks,
@@ -289,8 +290,9 @@ export default function AppLayout() {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      if (!googleAccessToken) {
-        alert("Google Access Token missing. Please sign out and log back in.");
+      const driveToken = await getValidDriveToken();
+      if (!driveToken) {
+        alert("Google Drive access unavailable. Please sign out and log back in.");
         return;
       }
 
@@ -305,7 +307,7 @@ export default function AppLayout() {
         setBgUploading(true);
         const driveFileId = await uploadBackgroundToDrive(
           file,
-          googleAccessToken,
+          driveToken,
           customBgDriveId
         );
 
@@ -333,7 +335,7 @@ export default function AppLayout() {
         setBgUploading(false);
       }
     },
-    [googleAccessToken, customBgDriveId]
+    [customBgDriveId]
   );
 
 
@@ -343,8 +345,9 @@ export default function AppLayout() {
       if (!files.length) return;
       e.target.value = "";
 
-      if (!googleAccessToken) {
-        alert("Please login with Google first.");
+      const driveToken = await getValidDriveToken();
+      if (!driveToken) {
+        alert("Google Drive access unavailable. Please login with Google first.");
         return;
       }
 
@@ -394,7 +397,7 @@ export default function AppLayout() {
         setUploadProgress(0);
 
         try {
-          const result = await processAudioUpload(entry.file, user, googleAccessToken, (progress) => {
+          const result = await processAudioUpload(entry.file, user, driveToken, (progress) => {
             setUploadStep(progress.step);
             setUploadProgress(progress.percent);
             setUploadQueue((q) =>
@@ -462,7 +465,7 @@ export default function AppLayout() {
         }
       }
     },
-    [googleAccessToken, user, userTracks, setUserTracks]
+    [user, userTracks, setUserTracks]
   );
 
 
@@ -498,6 +501,11 @@ export default function AppLayout() {
       }
 
       switch (e.key) {
+        case "Tab":
+          if (e.repeat) break;
+          e.preventDefault();
+          handleTogglePlay();
+          break;
         case "k":
         case "K":
           e.preventDefault();

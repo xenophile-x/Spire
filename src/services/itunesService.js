@@ -37,6 +37,9 @@ export async function matchItunesMetadata(rawQuery) {
       return {
         trackName: match.trackName,
         artistName: match.artistName,
+        // Stable provider identity — lets the DB merge artists by entity
+        // instead of trusting display strings.
+        artistId: match.artistId ? String(match.artistId) : null,
         collectionName: match.collectionName || "Uploaded Single",
         artworkUrl,
         primaryGenreName: match.primaryGenreName || "Music",
@@ -141,11 +144,13 @@ export async function fetchArtistPhoto(artistName) {
   }
 
 
+  // entity=musicArtist returns no artwork — search songs instead and use
+  // the top result's album art as the artist photo proxy.
   try {
     const response = await fetch(
       `https://itunes.apple.com/search?term=${encodeURIComponent(
         artistName.trim()
-      )}&entity=musicArtist&limit=1`
+      )}&media=music&entity=song&limit=1`
     );
 
     if (!response.ok) {
@@ -169,9 +174,9 @@ export async function fetchArtistPhoto(artistName) {
   return "";
 }
 
-// Single-source artist lookup: the fetch-artist-photo edge function
-// (iTunes photo + Wikipedia bio). No client-side fallbacks — alternatives
-// produced inconsistent photos between views.
+// Artist profile lookup: the fetch-artist-photo edge function first
+// (Wikipedia photo + bio). If Wikipedia has nothing for the artist,
+// fall back to iTunes for the photo.
 export async function fetchArtistProfile(artistName) {
   if (!artistName) return { photo_url: "", bio: "" };
 
@@ -179,13 +184,38 @@ export async function fetchArtistProfile(artistName) {
     const { data, error } = await supabase.functions.invoke("fetch-artist-photo", {
       body: { artistName },
     });
-    if (error) throw error;
-    return {
-      photo_url: data?.photo_url || "",
-      bio: data?.bio || "",
-    };
+    if (!error && (data?.photo_url || data?.bio)) {
+      return {
+        photo_url: data?.photo_url || "",
+        bio: data?.bio || "",
+      };
+    }
   } catch (err) {
-    console.warn(`[iTunes] Artist profile fetch failed for "${artistName}":`, err);
-    return { photo_url: "", bio: "" };
+    console.warn(`[Artist] Profile fetch failed for "${artistName}":`, err);
   }
+
+  // Wikipedia/edge function had nothing — fall back to iTunes.
+  // entity=musicArtist returns no artwork, so search the artist's songs
+  // and use the top result's album art as the photo proxy.
+  try {
+    const response = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(
+        artistName.trim()
+      )}&media=music&entity=song&limit=1`
+    );
+    if (response.ok) {
+      const data = await response.json();
+      const match = data.results && data.results[0];
+      const photo = match?.artworkUrl100
+        ? match.artworkUrl100.replace("100x100bb", "600x600bb")
+        : "";
+      if (photo) {
+        return { photo_url: photo, bio: "" };
+      }
+    }
+  } catch (err) {
+    console.warn(`[iTunes] Artist fallback failed for "${artistName}":`, err);
+  }
+
+  return { photo_url: "", bio: "" };
 }

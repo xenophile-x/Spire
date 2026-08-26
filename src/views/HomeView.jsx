@@ -109,6 +109,28 @@ export default function HomeView({
           <h2 className="text-lg font-bold tracking-tight text-white">
             Search results for "{searchQuery}"
           </h2>
+          {filteredTracks.length === 0 && filteredArtists.length === 0 ? (
+            <p className="text-sm text-white/50">No results found.</p>
+          ) : null}
+          {filteredTracks.length > 0 && (
+            <div className="w-full min-w-0 space-y-3">
+              <h3 className="text-sm font-bold uppercase tracking-[0.15em] text-white/60">
+                Songs
+              </h3>
+              <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4">
+                {filteredTracks.map((track) => (
+                  <TrackCard
+                    key={`search-${track.id}`}
+                    track={track}
+                    onPlayTrack={onPlayTrack}
+                    playlists={playlists}
+                    onAddToPlaylist={onAddToPlaylist}
+                    onDeleteTrack={onDeleteTrack}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           {filteredArtists.length > 0 && (
             <div className="w-full min-w-0 space-y-3">
               <h3 className="text-sm font-bold uppercase tracking-[0.15em] text-white/60">
@@ -144,27 +166,6 @@ export default function HomeView({
                     </button>
                   );
                 })}
-              </div>
-            </div>
-          )}
-          {filteredTracks.length === 0 && filteredArtists.length === 0 ? (
-            <p className="text-sm text-white/50">No results found.</p>
-          ) : filteredTracks.length === 0 ? null : (
-            <div className="w-full min-w-0 space-y-3">
-              <h3 className="text-sm font-bold uppercase tracking-[0.15em] text-white/60">
-                Songs
-              </h3>
-              <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4">
-                {filteredTracks.map((track) => (
-                  <TrackCard
-                    key={`search-${track.id}`}
-                    track={track}
-                    onPlayTrack={onPlayTrack}
-                    playlists={playlists}
-                    onAddToPlaylist={onAddToPlaylist}
-                    onDeleteTrack={onDeleteTrack}
-                  />
-                ))}
               </div>
             </div>
           )}

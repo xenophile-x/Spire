@@ -51,6 +51,7 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
     trackInfo = {
       title: itunesData.trackName,
       artist: itunesData.artistName,
+      itunesArtistId: itunesData.artistId || null,
       album: itunesData.collectionName,
       artworkUrl: itunesData.artworkUrl || fallbackImg,
       artistPhotoUrl: itunesData.artworkUrl || fallbackImg,
@@ -67,6 +68,7 @@ export async function processAudioUpload(file, user, accessToken, onProgress) {
     trackInfo = {
       title: String((cleanedSegments[1] || cleanedSegments[0] || "Unknown Track").trim()),
       artist: String((cleanedSegments[1] ? cleanedSegments[0] : "Unknown Artist").trim()),
+      itunesArtistId: null,
       album: "Uploaded Single",
       artworkUrl: fallbackImg,
       artistPhotoUrl: fallbackImg,

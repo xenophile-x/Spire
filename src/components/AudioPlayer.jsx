@@ -1,39 +1,6 @@
 import React, { useEffect, useRef } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { parseLRC } from "@/utils/lyricsParser";
-
-async function fetchDriveAudio(driveId, googleAccessToken, supabaseAccessToken) {
-
-
-  if (googleAccessToken) {
-    try {
-      const directResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`,
-        { headers: { Authorization: `Bearer ${googleAccessToken}` } }
-      );
-      if (directResponse.ok) return await directResponse.blob();
-      console.warn(
-        `[AudioPlayer] Direct Drive fetch blocked (${directResponse.status}) — falling back to proxy...`
-      );
-    } catch (err) {
-      console.warn("[AudioPlayer] Direct Drive fetch failed:", err);
-    }
-  }
-
-
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!supabaseUrl) throw new Error("VITE_SUPABASE_URL not set");
-  const headers = {};
-  if (supabaseAccessToken) headers.Authorization = `Bearer ${supabaseAccessToken}`;
-  if (supabaseAnonKey) headers.apikey = supabaseAnonKey;
-  const response = await fetch(
-    `${supabaseUrl}/functions/v1/stream-track?trackId=${encodeURIComponent(driveId)}`,
-    { headers }
-  );
-  if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
-  return await response.blob();
-}
+import { getAudioObjectUrl } from "@/utils/audioSource";
 
 export default function AudioPlayer({
   activeTrack,
@@ -51,14 +18,12 @@ export default function AudioPlayer({
   const audioRef = useRef(null);
   const loadTokenRef = useRef(0);
   const loadedTrackIdRef = useRef(null);
-  const blobUrlRef = useRef(null);
 
   const latestPropsRef = useRef({ seekTime, isPlaying });
   latestPropsRef.current = { seekTime, isPlaying };
 
   useEffect(() => {
     let isMounted = true;
-    let currentBlobUrl = null;
     const token = ++loadTokenRef.current;
 
     async function loadAudioSource() {
@@ -74,20 +39,7 @@ export default function AudioPlayer({
 
       if (!audioUrl && driveId) {
         try {
-          let googleToken = "";
-          let accessToken = "";
-          try {
-            const { data: { session } } = await supabase.auth.getSession();
-
-
-            googleToken = session?.provider_token || "";
-            accessToken = session?.access_token || "";
-          } catch {
-            accessToken = "";
-          }
-          const audioBlob = await fetchDriveAudio(driveId, googleToken, accessToken);
-          currentBlobUrl = URL.createObjectURL(audioBlob);
-          audioUrl = currentBlobUrl;
+          audioUrl = await getAudioObjectUrl(driveId);
         } catch (err) {
           console.error("[AudioPlayer] Failed to read audio file from Google Drive proxy:", err);
           return;
@@ -100,11 +52,6 @@ export default function AudioPlayer({
       audio.load();
       loadedTrackIdRef.current = activeTrack?.id || null;
       if (onDurationChange) onDurationChange(0);
-
-      if (blobUrlRef.current && blobUrlRef.current !== currentBlobUrl) {
-        URL.revokeObjectURL(blobUrlRef.current);
-      }
-      blobUrlRef.current = currentBlobUrl;
 
       const waitForReady = () =>
         new Promise((resolve, reject) => {
@@ -155,20 +102,8 @@ export default function AudioPlayer({
 
     return () => {
       isMounted = false;
-      if (currentBlobUrl && blobUrlRef.current !== currentBlobUrl) {
-        URL.revokeObjectURL(currentBlobUrl);
-      }
     };
   }, [activeTrack, reloadKey, onDurationChange]);
-
-  useEffect(() => {
-    return () => {
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = null;
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (!audioRef.current || !audioRef.current.src) return;

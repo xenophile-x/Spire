@@ -2,10 +2,61 @@ import { runFallbackChain } from "./fallbackRunner";
 
 const USER_AGENT = "Spire ( contact@spire.com )";
 const MUSICBRAINZ_DELAY_MS = 1100;
+const DEFAULT_PROVIDER_TIMEOUT_MS = 3500;
+const MUSICBRAINZ_TIMEOUT_MS = 9000;
 const DEFAULT_COVER =
   "https://cdn.saleminteractivemedia.com/shared/images/default-cover-art.png";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const memoryCache = new Map();
+
+// Substring gate for non-music-exclusive sources (Wikipedia): rejects
+// actors, politicians, cities etc. that happen to share the artist's name.
+const MUSIC_KEYWORDS = [
+  "musician",
+  "singer",
+  "band",
+  "rapper",
+  "composer",
+  "songwriter",
+  "song",
+  "album",
+  "record producer",
+  "dj",
+  "disc jockey",
+  "musical group",
+  "music duo",
+  "orchestra",
+  "discography",
+  "vocalist",
+  "guitarist",
+  "drummer",
+  "pianist",
+  "violinist",
+  "record label",
+  "hip hop",
+  "touring",
+  "debut studio",
+];
+
+function isMusicEntity(text = "") {
+  const lower = String(text).toLowerCase();
+  return MUSIC_KEYWORDS.some((keyword) => lower.includes(keyword));
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_PROVIDER_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timer);
+    return response;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
 
 function upgradeItunesArtwork(url) {
   if (!url) return "";
@@ -21,7 +72,7 @@ const getDeezerUrl = (endpoint) => {
 
 async function fetchWikidataImage(wikidataId) {
   const url = `https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${wikidataId}&property=P18&format=json&origin=*`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) return "";
 
   const data = await res.json();
@@ -34,26 +85,30 @@ async function fetchWikidataImage(wikidataId) {
 
 export async function fetchArtistImage(artistName) {
   if (!artistName) return "";
+  const cacheKey = `artist:${artistName.trim().toLowerCase()}`;
+  if (memoryCache.has(cacheKey)) return memoryCache.get(cacheKey);
+
   const cleanName = encodeURIComponent(artistName.trim());
 
   const result = await runFallbackChain(artistName, [
     {
       name: "Wikipedia",
       fetcher: async () => {
-        const wikiRes = await fetch(
-          `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(artistName.trim())}`,
-          { headers: { "User-Agent": USER_AGENT } }
+        const wikiRes = await fetchWithTimeout(
+          `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(artistName.trim())}`
         );
         if (!wikiRes.ok) return null;
         const data = await wikiRes.json();
         if (!data || data.type === "disambiguation") return null;
+        const bioText = `${data.description || ""} ${data.extract || ""}`;
+        if (!isMusicEntity(bioText)) return null;
         return data.originalimage?.source || data.thumbnail?.source || null;
       },
     },
     {
       name: "Deezer",
       fetcher: async () => {
-        const res = await fetch(getDeezerUrl(`/search/artist?q=${cleanName}`));
+        const res = await fetchWithTimeout(getDeezerUrl(`/search/artist?q=${cleanName}`));
         if (!res.ok) return null;
         const data = await res.json();
         return data.data?.[0]?.picture_xl || null;
@@ -62,9 +117,10 @@ export async function fetchArtistImage(artistName) {
     {
       name: "MusicBrainz",
       fetcher: async () => {
-        const mbRes = await fetch(
+        const mbRes = await fetchWithTimeout(
           `https://musicbrainz.org/ws/2/artist/?query=artist:${cleanName}&fmt=json&limit=1`,
-          { headers: { "User-Agent": USER_AGENT } }
+          { headers: { "User-Agent": USER_AGENT } },
+          MUSICBRAINZ_TIMEOUT_MS
         );
         if (!mbRes.ok) return null;
         const mbData = await mbRes.json();
@@ -74,9 +130,10 @@ export async function fetchArtistImage(artistName) {
         // MusicBrainz rate-limits to ~1 req/sec.
         await delay(MUSICBRAINZ_DELAY_MS);
 
-        const relRes = await fetch(
+        const relRes = await fetchWithTimeout(
           `https://musicbrainz.org/ws/2/artist/${artistId}?inc=url-rels&fmt=json`,
-          { headers: { "User-Agent": USER_AGENT } }
+          { headers: { "User-Agent": USER_AGENT } },
+          MUSICBRAINZ_TIMEOUT_MS
         );
         if (!relRes.ok) return null;
         const relData = await relRes.json();
@@ -91,7 +148,7 @@ export async function fetchArtistImage(artistName) {
     {
       name: "iTunes",
       fetcher: async () => {
-        const itunesRes = await fetch(
+        const itunesRes = await fetchWithTimeout(
           `https://itunes.apple.com/search?term=${cleanName}&entity=song&limit=1`
         );
         if (!itunesRes.ok) return null;
@@ -101,19 +158,23 @@ export async function fetchArtistImage(artistName) {
     },
   ]);
 
-  return result?.data || "";
+  const image = result?.data || "";
+  memoryCache.set(cacheKey, image);
+  return image;
 }
 
 // Unified cover-art chain shared by the upload pipeline and the lazy
 // backfill in metadataService.resolveTrackCover.
 export async function fetchSongCover(title, artist) {
   const query = `${title} ${artist}`.trim();
+  const cacheKey = `cover:${query.toLowerCase()}`;
+  if (memoryCache.has(cacheKey)) return memoryCache.get(cacheKey);
 
   const result = await runFallbackChain(query, [
     {
       name: "iTunes",
       fetcher: async () => {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=1`
         );
         if (!res.ok) return null;
@@ -124,7 +185,9 @@ export async function fetchSongCover(title, artist) {
     {
       name: "Deezer",
       fetcher: async () => {
-        const res = await fetch(getDeezerUrl(`/search/track?q=${encodeURIComponent(query)}`));
+        const res = await fetchWithTimeout(
+          getDeezerUrl(`/search/track?q=${encodeURIComponent(query)}`)
+        );
         if (!res.ok) return null;
         const data = await res.json();
         return data.data?.[0]?.album?.cover_xl || null;
@@ -137,7 +200,7 @@ export async function fetchSongCover(title, artist) {
           "https://www.jiosaavn.com/api.php?__call=search.getResults" +
           "&_format=json&_marker=0&api_version=4&ctx=web6dot0&q=" +
           encodeURIComponent(query);
-        const saavnRes = await fetch(saavnUrl);
+        const saavnRes = await fetchWithTimeout(saavnUrl);
         if (!saavnRes.ok) return null;
         const saavnData = await saavnRes.json();
         const image = saavnData?.results?.[0]?.image;
@@ -146,5 +209,7 @@ export async function fetchSongCover(title, artist) {
     },
   ]);
 
-  return result?.data || DEFAULT_COVER;
+  const cover = result?.data || DEFAULT_COVER;
+  memoryCache.set(cacheKey, cover);
+  return cover;
 }

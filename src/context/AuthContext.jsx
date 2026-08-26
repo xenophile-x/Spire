@@ -9,6 +9,10 @@ import {
   getDriveAccessToken,
   getDriveTokenTimestamp,
 } from "@/utils/auth";
+import {
+  getGoogleAccessToken,
+  clearGoogleAccessTokenCache,
+} from "@/lib/googleTokenClient";
 
 const AuthContext = createContext({});
 
@@ -147,6 +151,7 @@ export const AuthProvider = ({ children }) => {
       console.error("Sign out failed:", err);
     } finally {
       clearDriveAccessToken();
+      clearGoogleAccessTokenCache();
       setDriveToken(null);
     }
   };
@@ -159,32 +164,59 @@ export const AuthProvider = ({ children }) => {
 
 
   const refreshGoogleToken = async () => {
+    // 1) Preferred: server-side refresh via the stored Google refresh token.
     try {
       const {
         data: { session: currentSession },
       } = await supabase.auth.getSession();
 
-      if (!currentSession?.access_token) {
-        console.warn("[Auth] No active Supabase session to authorize refresh call.");
-        return null;
-      }
+      if (currentSession?.access_token) {
+        const { data, error } = await supabase.functions.invoke("refresh-google-token", {
+          headers: {
+            Authorization: `Bearer ${currentSession.access_token}`,
+          },
+        });
 
-      const { data, error } = await supabase.functions.invoke("refresh-google-token", {
-        headers: {
-          Authorization: `Bearer ${currentSession.access_token}`,
-        },
-      });
-
-      if (error || !data?.access_token) {
+        if (!error && data?.access_token) {
+          setDriveAccessToken(data.access_token);
+          setDriveToken(data.access_token);
+          return data.access_token;
+        }
         console.warn("[Auth] Google token refresh failed:", error?.message || data?.error);
-        return null;
+      } else {
+        console.warn("[Auth] No active Supabase session to authorize refresh call.");
       }
-
-      setDriveAccessToken(data.access_token);
-      setDriveToken(data.access_token);
-      return data.access_token;
     } catch (err) {
       console.error("[Auth] refreshGoogleToken threw:", err);
+    }
+
+    // 2) Fallback: silently mint a fresh short-lived token in the browser.
+    //    Supabase's managed Google OAuth does not hand us a provider refresh
+    //    token, so this is what keeps Drive uploads (and stream-track, via the
+    //    server-side copy below) alive past the first hour of a session — as
+    //    long as the owner's tab is open and their Google session persists.
+    try {
+      const token = await getGoogleAccessToken();
+      setDriveAccessToken(token);
+      setDriveToken(token);
+
+      try {
+        const {
+          data: { session: currentSession },
+        } = await supabase.auth.getSession();
+        if (currentSession?.access_token) {
+          supabase.functions
+            .invoke("store-google-token", {
+              headers: { Authorization: `Bearer ${currentSession.access_token}` },
+              body: { access_token: token, expires_in: 55 * 60 },
+            })
+            .catch((err) => console.warn("[Auth] Failed to persist refreshed token:", err));
+        }
+      } catch {}
+
+      return token;
+    } catch (err) {
+      console.error("[Auth] Browser-side Google token mint failed:", err);
       return null;
     }
   };

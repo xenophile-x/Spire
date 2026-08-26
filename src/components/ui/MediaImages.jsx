@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import {
   DEFAULT_COVER,
   fetchArtistImageFallback,
@@ -139,7 +140,7 @@ export function ArtistProfileImage({
       ref={imgRef}
       src={resolvedSrc}
       alt={alt || artistName}
-      className={className}
+      className={cn("max-w-none", className)}
       loading="lazy"
       decoding="async"
       onError={() => setFailed(true)}

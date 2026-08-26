@@ -1,0 +1,246 @@
+# Spire Music App - Project Documentation
+
+## Overview
+Spire is a React + Vite single-page application for personal music library management with Google Drive integration, Supabase backend, and advanced features like karaoke, radio streaming, and artist photo sync.
+
+## Tech Stack
+- **Frontend**: React 18, Vite, React Router v6
+- **Styling**: Tailwind CSS, custom glassmorphism components (glasscn)
+- **Backend**: Supabase (PostgreSQL, Auth, Edge Functions, Realtime)
+- **Storage**: Google Drive API (audio files), Supabase Storage (metadata)
+- **Auth**: Supabase Auth with Google OAuth (offline access for Drive)
+- **APIs**: iTunes Search, MusicBrainz, Wikidata, Wikipedia, DeepSeek (optional)
+
+## Project Structure
+
+```
+src/
+├── main.jsx                 # App entry point
+├── App.jsx                  # Root component, providers, routing
+├── index.css                # Global styles, Tailwind imports
+├── constants/
+│   ├── navigation.js        # Navigation config
+│   └── radioStations.js     # Radio station data
+├── context/
+│   ├── AuthContext.jsx      # Supabase auth, Google OAuth tokens, session management
+│   ├── LibraryContext.jsx   # User library, playlists, tracks, deletion, artist photos
+│   └── PlayerContext.jsx    # Audio playback state, queue, karaoke
+├── hooks/
+│   ├── useAudioPlayer.js    # Audio element management
+│   ├── useHomeFeed.js       # Home feed data fetching
+│   ├── useKaraokeRecorder.js# MediaRecorder for karaoke
+│   ├── useListenTogether.js # Discord listen-along sync
+│   ├── useRadioBroadcast.js # Radio streaming
+│   ├── useRadioStation.js   # Radio station management
+│   ├── useSpatialAudio.js   # Web Audio API spatial effects
+│   ├── useImageColor.js     # Color extraction from images
+│   └── use-mobile.js        # Mobile breakpoint detection
+├── lib/
+│   ├── supabaseClient.js    # Supabase client singleton
+│   ├── utils.js             # Utility functions (cn, etc.)
+│   ├── glass-variants.js    # Glassmorphism variant configs
+│   └── deleteTrack.js       # Edge Function wrapper for track deletion
+├── routes/
+│   └── AppRoutes.jsx        # Route definitions, layout composition
+├── services/
+│   ├── supabaseService.js   # All Supabase queries (library, playlists, artists, tracks)
+│   ├── uploadPipeline.js    # Track registration, metadata, lyrics, artwork
+│   ├── uploadService.js     # Google Drive upload handling
+│   ├── driveService.js      # Google Drive API helpers
+│   ├── itunesService.js     # iTunes Search API for artwork/metadata
+│   ├── lyricsService.js     # Lyrics fetching (synced/plain)
+│   ├── wikiMusicService.js  # Wikipedia/MusicBrainz/Wikidata artist photos
+│   └── discordService.js    # Discord RPC / listen along
+├── utils/
+│   ├── auth.js              # Token storage helpers (localStorage)
+│   ├── artistNames.js       # Artist name splitting/parsing
+│   ├── formatters.js        # Time, duration, file size formatting
+│   ├── lyricsParser.js      # LRC/synced lyrics parsing
+│   ├── audioParser.js       # Audio metadata extraction (music-metadata)
+│   ├── trackMetadata.js     # Track metadata normalization
+│   ├── driveApi.js          # Google Drive REST API wrappers
+│   ├── musicBrainz.js       # MusicBrainz API helpers
+│   ├── recommend.js         # Recommendation algorithms
+│   ├── radioTimeline.js     # Radio playback timeline
+│   ├── recordingsStore.js   # IndexedDB for karaoke recordings
+│   ├── stationQueue.js      # Radio station queue management
+│   ├── audioElementGraph.js # Web Audio graph management
+│   └── imageUtils.js        # Image processing helpers
+├── views/
+│   ├── HomeView.jsx         # Main library view (tracks, artists, search)
+│   ├── ArtistView.jsx       # Artist detail page (tracks, bio, photo)
+│   ├── PlaylistsView.jsx    # Playlist management
+│   ├── ExploreView.jsx      # Discovery, recommendations
+│   ├── KaraokeView.jsx      # Karaoke player with synced lyrics
+│   ├── RecordingsView.jsx   # Karaoke recordings management
+│   ├── SharedLibraryView.jsx# Shared library access
+│   ├── SettingsView.jsx     # App settings, account, sync
+│   ├── NotFoundView.jsx     # 404 page
+│   ├── TermsView.jsx        # Terms of service
+│   └── PrivacyView.jsx      # Privacy policy
+├── components/
+│   ├── AppLayout.jsx        # Main layout wrapper
+│   ├── AudioPlayer.jsx      # Core audio player (bottom bar)
+│   ├── TrackCard.jsx        # Track display card with delete/playlist
+│   ├── Opening.jsx          # Startup animation/sound
+│   ├── Landing.jsx          # Landing page (unauthenticated)
+│   ├── LegalPage.jsx        # Legal pages wrapper
+│   ├── NavButton.jsx        # Navigation button component
+│   ├── UploadModal.jsx      # File upload dialog
+│   ├── LyricsModal.jsx      # Full-screen lyrics view
+│   ├── MobileNav.jsx        # Mobile bottom navigation
+│   ├── FloatingBar.jsx      # Floating action bar
+│   ├── MusicBar.jsx         # Now playing bar
+│   ├── GlassSearchBar.jsx   # Search input with glass effect
+│   ├── GlassSlider.jsx      # Custom slider component
+│   ├── SyncedLyrics.jsx     # Karaoke-style synced lyrics display
+│   ├── PlaylistPoster.jsx   # Playlist cover art
+│   ├── BackgroundManager.jsx# Dynamic background management
+│   ├── EnhancedBackground.jsx# Advanced background effects
+│   ├── UltraQualityBackground.jsx# High-quality backgrounds
+│   ├── RadioStationDropdown.jsx# Radio station selector
+│   ├── QuotaAlertDialog.jsx # Storage quota warnings
+│   ├── OfflineIndicator.jsx # Offline status banner
+│   ├── DuplicateFileDialog.jsx# Duplicate detection dialog
+│   ├── LibrarySharing.jsx   # Library sharing UI
+│   ├── LibrarySharingCard.jsx# Shared library card
+│   ├── LibraryShareSettings.jsx# Sharing permissions
+│   └── icons.jsx            # Custom SVG icons
+├── data/
+│   └── gradients.json       # Gradient presets for backgrounds
+├── assets/
+│   └── fonts/               # SF Pro Display font family
+└── supabase/
+    └── functions/
+        ├── refresh-google-token/  # Edge Function: OAuth token refresh
+        ├── delete-track/          # Edge Function: Delete track + Drive file
+        └── fetch-artist-photo/    # Edge Function: Artist photo lookup
+```
+
+## Key Features
+
+### 1. Library Management
+- **HomeView**: Grid/list of tracks, artist carousel, search (local + catalog)
+- **TrackCard**: Play, add to playlist, delete (owned tracks only)
+- **ArtistView**: Artist bio, photo, track list, popular tracks
+- **PlaylistsView**: CRUD playlists, add/remove tracks, smart playlists (Recently Played, Recently Added, Favorites)
+
+### 2. Google Drive Integration
+- OAuth with offline access (`drive.file` scope)
+- Tokens stored in `google_oauth_tokens` table (RLS protected)
+- Edge Function `refresh-google-token` handles token refresh server-side
+- Audio files uploaded directly to Drive, metadata in Supabase
+
+### 3. Track Deletion (New)
+- **Client**: `deleteTrackAndDriveFile(trackId)` calls Edge Function
+- **Edge Function** (`delete-track`):
+  1. Verifies user JWT
+  2. Checks track ownership
+  3. Refreshes Google token if expired (server-side client secret)
+  4. Deletes file from Google Drive API
+  5. Deletes `user_tracks` record
+- **UI**: Delete button on TrackCard (hover, owned tracks only), confirmation dialog
+
+### 4. Artist Photo Sync
+- Background sync in LibraryContext (`runArtistPhotoSync`)
+- Priority chain: MusicBrainz → Wikipedia → Wikidata → iTunes
+- Music-only verification (occupation checks)
+- Updates `artists.photo_url` column
+
+### 5. Karaoke
+- Synced lyrics (LRC format) from multiple sources
+- Recording with MediaRecorder (audio + video)
+- Recordings stored in IndexedDB, synced to Drive
+
+### 6. Radio
+- Streaming from configured stations
+- Spatial audio effects (Web Audio API)
+- Discord listen-along sync
+
+### 7. Sharing
+- Library sharing via Supabase RLS policies
+- Shared tracks marked with `isShared` flag
+
+## Database Schema (Key Tables)
+
+```sql
+-- User's personal library tracks
+user_tracks (
+  id uuid PK,
+  user_id uuid FK -> auth.users,
+  track_id uuid FK -> tracks,
+  drive_file_id text,
+  uploaded_filename text,
+  created_at timestamptz
+)
+
+-- Canonical track metadata
+tracks (
+  id uuid PK,
+  canonical_title text,
+  canonical_artist text,
+  duration_seconds int,
+  artist_id uuid FK -> artists,
+  itunes_id text
+)
+
+-- Artist profiles
+artists (
+  id uuid PK,
+  name text,
+  photo_url text,
+  bio text
+)
+
+-- Google OAuth tokens (RLS: user_id = auth.uid())
+google_oauth_tokens (
+  user_id uuid PK,
+  access_token text,
+  refresh_token text,
+  expires_at timestamptz,
+  scope text,
+  token_type text,
+  updated_at timestamptz
+)
+
+-- Playlists
+playlists (id, user_id, title, description, is_public)
+playlist_tracks (playlist_id, track_id)
+
+-- Liked songs
+liked_songs (user_id, track_id)
+
+-- Listening history
+listening_history (user_id, track_id, genre, created_at)
+```
+
+## Environment Variables (`.env.local`)
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+VITE_GOOGLE_CLIENT_ID=...
+VITE_DISCORD_CLIENT_ID=...
+# Optional:
+VITE_DEEPSEEK_API_KEY=...
+```
+
+## Edge Function Secrets (Supabase CLI)
+```bash
+supabase secrets set GOOGLE_CLIENT_ID="..."
+supabase secrets set GOOGLE_CLIENT_SECRET="..."
+supabase functions deploy refresh-google-token
+supabase functions deploy delete-track
+supabase functions deploy fetch-artist-photo
+```
+
+## Recent Changes
+1. **Track Deletion**: Added Edge Function `delete-track` for secure Drive + DB deletion
+2. **Wikipedia CORS Fix**: Changed `User-Agent` to `Api-User-Agent` in `wikiMusicService.js`
+3. **Image Error Handling**: Fixed broken artist images by hiding failed images (shows fallback initials)
+4. **Delete Button UI**: Visible delete button on TrackCard hover for owned tracks
+
+## Excluded from Documentation
+- `src/components/ui/` - shadcn/ui components (button, dialog, card, etc.)
+- `src/components/ui/glasscn/` - Custom glassmorphism components (LiquidGlass, GlassDropdownMenu, etc.)
+- Font files in `src/assets/`
+- Generated/compiled files

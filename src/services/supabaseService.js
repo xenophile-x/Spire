@@ -31,7 +31,7 @@ export const getUserLibrary = async (userId) => {
         canonical_artist,
         duration_seconds,
         artist_id,
-        artists ( name, photo_url, bio, favorite_artists ( artist_id ) ),
+        artists!tracks_artist_id_fkey ( name, photo_url, bio, favorite_artists ( artist_id ) ),
         track_metadata ( artwork_url, primary_genre, album_name, release_year ),
         track_lyrics ( synced_lyrics )
       )
@@ -52,7 +52,7 @@ export const getArtistsWithSampleTrack = async (userId) => {
           canonical_title,
           canonical_artist,
           artist_id,
-          artists ( id, name, photo_url, bio )
+          artists!tracks_artist_id_fkey ( id, name, photo_url, bio )
         )
       `)
       .eq("user_id", userId);
@@ -92,7 +92,7 @@ export const getDistinctArtistsWithIds = async (userId) => {
       tracks (
         artist_id,
         canonical_artist,
-        artists ( id, name, photo_url )
+        artists!tracks_artist_id_fkey ( id, name, photo_url )
       )
     `)
       .eq("user_id", userId);
@@ -158,6 +158,7 @@ export const toggleArtistFavorite = async (userId, artistName) => {
     .from("artists")
     .select("id")
     .eq("name", artistName)
+    .limit(1)
     .maybeSingle();
   if (!artist) return false;
 
@@ -200,7 +201,7 @@ export const searchCatalog = async (query, limit = 8) => {
         canonical_title,
         canonical_artist,
         artist_id,
-        artists ( id, name, photo_url ),
+        artists!tracks_artist_id_fkey ( id, name, photo_url ),
         track_metadata ( artwork_url )
       `)
       .or(`canonical_title.ilike.${q},canonical_artist.ilike.${q}`)
@@ -402,7 +403,11 @@ export const registerTrackInSupabase = async ({
 
   // Resolve (or create) the artist row so uploads stay linked to one artist
   // entity — unlinked tracks surface in the carousel without a photo.
+  // Resolution order: iTunes artist ID (stable across renames) -> normalized
+  // name -> insert. Name-matched legacy rows get the ID stamped on, so the
+  // library migrates to entity keys one upload at a time.
   const artistName = (trackInfo.artist || "").trim();
+  const itunesArtistId = trackInfo.itunesArtistId || null;
   let artistId = null;
   const normalizedArtist = artistName.toLowerCase();
   if (
@@ -410,34 +415,73 @@ export const registerTrackInSupabase = async ({
     normalizedArtist !== "unknown" &&
     normalizedArtist !== "unknown artist"
   ) {
-    const safePattern = artistName.replace(/[%_\\]/g, " ").trim();
-    const { data: existingArtist } = await supabase
-      .from("artists")
-      .select("id")
-      .ilike("name", safePattern)
-      .maybeSingle();
-
-    if (existingArtist?.id) {
-      artistId = existingArtist.id;
-    } else {
-      const { data: newArtist, error: artistError } = await supabase
+    if (itunesArtistId) {
+      const { data: byProvider } = await supabase
         .from("artists")
-        .insert({ name: artistName })
         .select("id")
-        .single();
+        .eq("provider_id", itunesArtistId)
+        .maybeSingle();
+      if (byProvider?.id) {
+        artistId = byProvider.id;
+      }
+    }
 
-      if (!artistError) {
-        artistId = newArtist.id;
-      } else if (artistError.code === "23505") {
-        // Lost a race with another upload creating the same artist.
-        const { data: racedArtist } = await supabase
-          .from("artists")
-          .select("id")
-          .ilike("name", safePattern)
-          .maybeSingle();
-        artistId = racedArtist?.id || null;
+    if (!artistId) {
+      const safePattern = artistName.replace(/[%_\\]/g, " ").trim();
+      const { data: existingArtist } = await supabase
+        .from("artists")
+        .select("id, provider_id")
+        .ilike("name", safePattern)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingArtist?.id) {
+        artistId = existingArtist.id;
+        // Upgrade a legacy (name-only) row with the provider identity.
+        if (itunesArtistId && !existingArtist.provider_id) {
+          const { error: stampError } = await supabase
+            .from("artists")
+            .update({ provider_id: itunesArtistId })
+            .eq("id", artistId)
+            .is("provider_id", null);
+          if (stampError) {
+            console.warn("[Supabase] Artist ID stamp failed:", stampError.message);
+          }
+        }
       } else {
-        console.warn("[Supabase] Artist link failed:", artistError.message);
+        const { data: newArtist, error: artistError } = await supabase
+          .from("artists")
+          .insert({
+            name: artistName,
+            ...(itunesArtistId ? { provider_id: String(itunesArtistId) } : {}),
+          })
+          .select("id")
+          .single();
+
+        if (!artistError) {
+          artistId = newArtist.id;
+        } else if (artistError.code === "23505") {
+          // Lost a race with another upload creating the same artist.
+          let racedArtist = null;
+          if (itunesArtistId) {
+            ({ data: racedArtist } = await supabase
+              .from("artists")
+              .select("id")
+              .eq("provider_id", itunesArtistId)
+              .maybeSingle());
+          }
+          if (!racedArtist?.id) {
+            ({ data: racedArtist } = await supabase
+              .from("artists")
+              .select("id")
+              .ilike("name", safePattern)
+              .limit(1)
+              .maybeSingle());
+          }
+          artistId = racedArtist?.id || null;
+        } else {
+          console.warn("[Supabase] Artist link failed:", artistError.message);
+        }
       }
     }
   }
@@ -497,6 +541,19 @@ export const registerTrackInSupabase = async ({
       }
     } else {
       finalTrackId = newTrack.id;
+    }
+  }
+
+
+  if (finalTrackId && artistId) {
+    const { error: linkError } = await supabase
+      .from("track_artists")
+      .upsert(
+        { track_id: finalTrackId, artist_id: artistId, is_primary: true, position: 1 },
+        { onConflict: "track_id,artist_id" }
+      );
+    if (linkError) {
+      console.warn("[Supabase] track_artists link failed:", linkError.message);
     }
   }
 
