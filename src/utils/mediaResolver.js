@@ -3,6 +3,7 @@ import { DEFAULT_COVER } from "@/utils/trackMetadata";
 // Session-scoped caches: positive results cache the URL/bio, misses cache
 // "NONE" so we never retry a known-dead lookup within the session.
 const WIKI_PREFIX = "wiki_bio_";
+const WIKI_IMG_PREFIX = "wiki_img_res_";
 const ARTIST_IMG_PREFIX = "artist_img_res_";
 const COVER_PREFIX = "cover_res_";
 
@@ -140,6 +141,41 @@ async function itunesSearch(term, entity) {
     : null;
 }
 
+// Wikipedia lead image — preferred artist photo when the article exists.
+export function fetchWikipediaArtistImage(artistName) {
+  if (!artistName || artistName.toLowerCase() === "unknown artist") {
+    return Promise.resolve(null);
+  }
+
+  const cacheKey = WIKI_IMG_PREFIX + artistName.toLowerCase();
+  const cached = readCache(cacheKey);
+  if (cached !== null) {
+    return Promise.resolve(cached === NEGATIVE ? null : cached);
+  }
+
+  return withDedupe(cacheKey, async () => {
+    try {
+      const res = await fetch(
+        `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(artistName.trim())}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.type !== "disambiguation") {
+          const image = data.originalimage?.source || data.thumbnail?.source;
+          if (image) {
+            writeCache(cacheKey, image);
+            return image;
+          }
+        }
+      }
+    } catch {
+      // Cosmetic only — fall through to the next provider.
+    }
+    writeCache(cacheKey, NEGATIVE);
+    return null;
+  });
+}
+
 export function fetchArtistImageFallback(artistName) {
   if (!artistName || artistName.toLowerCase() === "unknown artist") {
     return Promise.resolve(null);
@@ -152,6 +188,14 @@ export function fetchArtistImageFallback(artistName) {
   }
 
   return withDedupe(cacheKey, async () => {
+    // Wikipedia article exists → its lead image is the artist's real photo,
+    // unlike iTunes where only album art is available as a proxy.
+    const wikiImage = await fetchWikipediaArtistImage(artistName);
+    if (wikiImage) {
+      writeCache(cacheKey, wikiImage);
+      return wikiImage;
+    }
+
     try {
       // iTunes has no artist-photo endpoint; their top song's album art is
       // the closest stable proxy. MusicBrainz exposes no artist images via

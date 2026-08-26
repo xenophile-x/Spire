@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,7 +14,7 @@ type TokenRow = {
 };
 
 async function refreshOwnerToken(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseClient,
   userId: string,
   tokenRow: TokenRow
 ): Promise<string | null> {
@@ -139,16 +139,40 @@ Deno.serve(async (req) => {
     let authorized = Boolean(isOwner);
 
     if (!authorized && shareToken) {
-      const { data: ownerProfile } = await supabaseAdmin
-        .from("users")
-        .select("id")
-        .eq("id", track.user_id)
+      // Preferred: owner-private token table (post phase3 migration).
+      const { data: tokenRow } = await supabaseAdmin
+        .from("user_share_tokens")
+        .select("user_id")
         .eq("share_token", shareToken)
-        .eq("is_library_public", true)
-        .is("deleted_at", null)
         .maybeSingle();
-      if (ownerProfile) {
-        authorized = true;
+
+      if (tokenRow && tokenRow.user_id === track.user_id) {
+        const { data: publicProfile } = await supabaseAdmin
+          .from("users")
+          .select("id")
+          .eq("id", track.user_id)
+          .eq("is_library_public", true)
+          .is("deleted_at", null)
+          .maybeSingle();
+        if (publicProfile) {
+          authorized = true;
+        }
+      }
+
+      if (!authorized) {
+        // Legacy fallback (pre-migration schema). Fails harmlessly once the
+        // users.share_token column is dropped by 20260826130000.
+        const { data: ownerProfile } = await supabaseAdmin
+          .from("users")
+          .select("id")
+          .eq("id", track.user_id)
+          .eq("share_token", shareToken)
+          .eq("is_library_public", true)
+          .is("deleted_at", null)
+          .maybeSingle();
+        if (ownerProfile) {
+          authorized = true;
+        }
       }
     }
 

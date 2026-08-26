@@ -55,12 +55,25 @@ export default function SharedLibraryView() {
         return;
       }
 
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("id, full_name, is_library_public")
-        .eq("share_token", shareToken)
-        .eq("is_library_public", true)
-        .single();
+      let userData = null;
+
+      const { data: rpcData, error: rpcError } = await supabase
+        .rpc("shared_library_owner", { p_token: shareToken })
+        .maybeSingle();
+
+      if (!rpcError && rpcData) {
+        userData = rpcData;
+      } else {
+        const { data: legacy } = await supabase
+          .from("users")
+          .select("id, full_name, is_library_public")
+          .eq("share_token", shareToken)
+          .eq("is_library_public", true)
+          .single();
+        userData = legacy;
+      }
+
+      const userError = !userData;
 
       if (cancelled) return;
 

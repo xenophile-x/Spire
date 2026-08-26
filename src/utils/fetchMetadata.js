@@ -38,6 +38,19 @@ export async function fetchArtistImage(artistName) {
 
   const result = await runFallbackChain(artistName, [
     {
+      name: "Wikipedia",
+      fetcher: async () => {
+        const wikiRes = await fetch(
+          `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(artistName.trim())}`,
+          { headers: { "User-Agent": USER_AGENT } }
+        );
+        if (!wikiRes.ok) return null;
+        const data = await wikiRes.json();
+        if (!data || data.type === "disambiguation") return null;
+        return data.originalimage?.source || data.thumbnail?.source || null;
+      },
+    },
+    {
       name: "Deezer",
       fetcher: async () => {
         const res = await fetch(getDeezerUrl(`/search/artist?q=${cleanName}`));
@@ -84,21 +97,6 @@ export async function fetchArtistImage(artistName) {
         if (!itunesRes.ok) return null;
         const itunesData = await itunesRes.json();
         return upgradeItunesArtwork(itunesData.results?.[0]?.artworkUrl100) || null;
-      },
-    },
-    {
-      name: "Wikipedia",
-      fetcher: async () => {
-        const wikiRes = await fetch(
-          `https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&piprop=original&titles=${cleanName}&origin=*`,
-          { headers: { "User-Agent": USER_AGENT } }
-        );
-        if (!wikiRes.ok) return null;
-        const wikiData = await wikiRes.json();
-        const pages = wikiData?.query?.pages || {};
-        const pageId = Object.keys(pages)[0];
-        const source = pageId !== "-1" ? pages[pageId]?.original?.source : null;
-        return source || null;
       },
     },
   ]);

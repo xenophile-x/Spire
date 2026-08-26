@@ -27,6 +27,14 @@ const DEFAULT_BG_IMAGE =
 
 const LibraryContext = React.createContext(null);
 
+// Bump to force every client to run one photo-refresh pass with the current
+// chain (Wikipedia-first), then the per-artist records go dormant again.
+const ARTIST_PHOTO_SYNC_VERSION = "v9-wiki-first";
+// Artists whose profile lookup came back empty are remembered for a week so
+// we stop re-calling the metadata service on every session.
+const ARTIST_PROFILE_ATTEMPTS_KEY = "spire:artist-profile-attempts";
+const ARTIST_PROFILE_RETRY_MS = 7 * 24 * 60 * 60 * 1000;
+
 export function LibraryProvider({ children }) {
   const { user } = useAuth();
 
@@ -458,12 +466,6 @@ export function LibraryProvider({ children }) {
   }, [userTracks]);
 
 
-  const ARTIST_PHOTO_SYNC_VERSION = "v8-dedup-link";
-  // Artists whose profile lookup came back empty are remembered for a week so
-  // we stop re-calling the metadata service on every session. `force` bypasses.
-  const ARTIST_PROFILE_ATTEMPTS_KEY = "spire:artist-profile-attempts";
-  const ARTIST_PROFILE_RETRY_MS = 7 * 24 * 60 * 60 * 1000;
-
   const readProfileAttempts = () => {
     try {
       return JSON.parse(localStorage.getItem(ARTIST_PROFILE_ATTEMPTS_KEY)) || {};
@@ -516,21 +518,31 @@ export function LibraryProvider({ children }) {
           }
 
 
-          // Photo already stored — keep it. Re-fetching on every sync version
-          // churned photo_url across sources (iTunes/Wiki/MusicBrainz), which
-          // made the carousel and artist page disagree. `force` re-fetches.
-          if (artist.photo_url && artist.bio && !force) {
-            if (attempts[artist.id]) {
-              delete attempts[artist.id];
-              attemptsDirty = true;
-            }
+          // Attempts record. Legacy entries were bare timestamps; current
+          // entries are { ts, ok, v } so every photo-chain upgrade triggers
+          // exactly one refresh pass before going dormant again.
+          const rawAttempt = attempts[artist.id];
+          const attemptRec =
+            typeof rawAttempt === "number"
+              ? { ts: rawAttempt, ok: false, v: null }
+              : rawAttempt || null;
+
+          // Settled: successfully synced under the current chain version and
+          // holding a photo/bio — keep it. Older-version photos get one
+          // re-fetch here so they migrate onto the wiki-first chain; `force`
+          // (Settings refresh) bypasses regardless.
+          if (
+            !force &&
+            attemptRec?.ok &&
+            attemptRec?.v === ARTIST_PHOTO_SYNC_VERSION &&
+            (artist.photo_url || artist.bio)
+          ) {
             doneCount += 1;
             continue;
           }
 
           // Recently failed — don't hammer the metadata service again.
-          const lastAttempt = attempts[artist.id] || 0;
-          if (!force && Date.now() - lastAttempt < ARTIST_PROFILE_RETRY_MS) {
+          if (!force && !attemptRec?.ok && Date.now() - (attemptRec?.ts || 0) < ARTIST_PROFILE_RETRY_MS) {
             doneCount += 1;
             continue;
           }
@@ -554,14 +566,15 @@ export function LibraryProvider({ children }) {
           }
 
           if (photoUrl || bioText) {
-            if (attempts[artist.id]) {
-              delete attempts[artist.id];
-              attemptsDirty = true;
-            }
+            attempts[artist.id] = {
+              ts: Date.now(),
+              ok: true,
+              v: ARTIST_PHOTO_SYNC_VERSION,
+            };
           } else {
-            attempts[artist.id] = Date.now();
-            attemptsDirty = true;
+            attempts[artist.id] = { ts: Date.now(), ok: false };
           }
+          attemptsDirty = true;
 
 
           await delay(1000);

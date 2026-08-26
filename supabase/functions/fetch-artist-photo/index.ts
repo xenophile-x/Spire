@@ -225,18 +225,24 @@ Deno.serve(async (req) => {
       return json({ error: "Missing artistName" }, 400);
     }
 
-    // Priority: Wikipedia → iTunes → Deezer → MusicBrainz
-    const result = await runFallbackChain<ArtistProfile>(artistName, [
-      { name: "wikipedia", fetcher: () => wikipediaProfile(artistName) },
-      { name: "itunes", fetcher: () => itunesProfile(artistName) },
-      { name: "deezer", fetcher: () => deezerProfile(artistName) },
-      { name: "musicbrainz", fetcher: () => musicBrainzProfile(artistName) },
-    ]);
+    // Wikipedia first: it owns the bio, and its lead image is preferred.
+    const wiki = await wikipediaProfile(artistName);
+    let photoUrl = wiki?.photo_url || "";
 
-    const profile = result?.data;
+    // Wiki article exists but has no usable image — let the other
+    // providers compete for the photo while keeping the wiki bio.
+    if (!photoUrl) {
+      const result = await runFallbackChain<ArtistProfile>(artistName, [
+        { name: "itunes", fetcher: () => itunesProfile(artistName) },
+        { name: "deezer", fetcher: () => deezerProfile(artistName) },
+        { name: "musicbrainz", fetcher: () => musicBrainzProfile(artistName) },
+      ]);
+      photoUrl = result?.data?.photo_url || "";
+    }
+
     return json({
-      photo_url: profile?.photo_url || "",
-      bio: profile?.bio || "",
+      photo_url: photoUrl,
+      bio: wiki?.bio || "",
     });
   } catch (err) {
     console.error("fetch-artist-photo error:", err);
