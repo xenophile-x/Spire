@@ -64,23 +64,23 @@ export default function AppRoutes({
     [userTracks, playedTrackIds]
   );
 
+  const homeElement = (
+    <HomeView
+      userTracks={userTracks}
+      searchQuery={searchQuery}
+      isUploading={isUploading}
+      onFileUpload={onFileUpload}
+      onPlayTrack={handlePlayTrack}
+      playlists={playlists}
+      onAddToPlaylist={handleAddToPlaylist}
+      onDeleteTrack={handleDeleteTrack}
+    />
+  );
+
   return (
     <Routes>
-      <Route
-        path="/"
-        element={
-          <HomeView
-            userTracks={userTracks}
-            searchQuery={searchQuery}
-            isUploading={isUploading}
-            onFileUpload={onFileUpload}
-            onPlayTrack={handlePlayTrack}
-            playlists={playlists}
-            onAddToPlaylist={handleAddToPlaylist}
-            onDeleteTrack={handleDeleteTrack}
-          />
-        }
-      />
+      <Route path="/" element={homeElement} />
+      <Route path="/home" element={homeElement} />
       <Route
         path="/explore"
         element={

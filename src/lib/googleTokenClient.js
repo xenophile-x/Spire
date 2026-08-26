@@ -112,3 +112,68 @@ export async function getGoogleAccessToken(minTtlMs = 120000) {
 export function clearGoogleAccessTokenCache() {
   cached = null;
 }
+
+// ---------------------------------------------------------------------------
+// Offline (authorization-code) flow — the permanent fix for shared streaming.
+// Requests an authorization code with access_type=offline so Google issues a
+// long-lived refresh token. The code is exchanged server-side (the client
+// secret never touches the browser); see supabase/functions/store-google-token.
+// ---------------------------------------------------------------------------
+
+let codeClient = null;
+let pendingCodeRequest = null;
+
+function ensureCodeClient() {
+  if (!CLIENT_ID) {
+    throw new Error("Google client ID is not configured (VITE_GOOGLE_CLIENT_ID).");
+  }
+  if (codeClient) return codeClient;
+
+  codeClient = window.google.accounts.oauth2.initCodeClient({
+    client_id: CLIENT_ID,
+    scope: SCOPE,
+    ux_mode: "popup",
+    access_type: "offline",
+    prompt: "consent",
+    callback: (resp) => {
+      const pending = pendingCodeRequest;
+      pendingCodeRequest = null;
+      if (!pending) return;
+      if (!resp.code) {
+        pending.reject(
+          Object.assign(
+            new Error(resp.error_description || resp.error || "No authorization code returned."),
+            { code: resp.error || "unknown" }
+          )
+        );
+      } else {
+        pending.resolve(resp.code);
+      }
+    },
+  });
+  return codeClient;
+}
+
+export async function requestGoogleAuthCode() {
+  await loadGsiScript();
+  const client = ensureCodeClient();
+
+  if (pendingCodeRequest) return pendingCodeRequest.promise;
+
+  let resolveFn;
+  let rejectFn;
+  const promise = new Promise((resolve, reject) => {
+    resolveFn = resolve;
+    rejectFn = reject;
+  });
+  pendingCodeRequest = { promise, resolve: resolveFn, reject: rejectFn };
+
+  try {
+    client.requestCode();
+  } catch (err) {
+    pendingCodeRequest = null;
+    throw err instanceof Error ? err : new Error(String(err));
+  }
+
+  return pendingCodeRequest.promise;
+}

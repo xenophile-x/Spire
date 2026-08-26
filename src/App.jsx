@@ -26,9 +26,16 @@ const DEFAULT_BG_POSTER = getOptimizedUnsplashUrl(DEFAULT_BG_IMAGE, { width: 128
 
 const SHARE_ROUTE_RE = /^\/share\/[^/]+$/;
 
+// Publicly accessible legal pages — resolvable before any auth/opening gate.
+const LEGAL_ROUTES = {
+  "/privacypolicy": PrivacyView,
+  "/privacy": PrivacyView,
+  "/termsofservice": TermsView,
+  "/terms": TermsView,
+};
+
 function AppContent({ onBackToLanding }) {
   const { user, loading, signInWithGoogle } = useAuth();
-  const location = useLocation();
 
   const [loginVideoSrc, setLoginVideoSrc] = React.useState(LOCAL_BG_VIDEO);
 
@@ -38,21 +45,6 @@ function AppContent({ onBackToLanding }) {
       return src;
     });
   };
-
-  const isLegalRoute =
-    location.pathname === "/privacypolicy" ||
-    location.pathname === "/termsofservice";
-  if (isLegalRoute) {
-    return location.pathname === "/termsofservice" ? (
-      <TermsView />
-    ) : (
-      <PrivacyView />
-    );
-  }
-
-  if (SHARE_ROUTE_RE.test(location.pathname)) {
-    return <SharedLibraryView />;
-  }
 
   if (loading) {
     return (
@@ -120,6 +112,16 @@ function AppContent({ onBackToLanding }) {
             </GlassButton>
           </div>
         </div>
+
+        <div className="absolute bottom-5 z-10 flex items-center gap-3 text-xs text-white/50">
+          <a href="/privacypolicy" className="transition-colors hover:text-white/80">
+            Privacy Policy
+          </a>
+          <span aria-hidden="true">·</span>
+          <a href="/termsofservice" className="transition-colors hover:text-white/80">
+            Terms of Service
+          </a>
+        </div>
       </div>
     );
   }
@@ -136,9 +138,24 @@ function AppContent({ onBackToLanding }) {
 export default function App() {
   const location = useLocation();
   const [currentScreen, setCurrentScreen] = useState(() => {
-    if (SHARE_ROUTE_RE.test(window.location.pathname)) return "app";
+    const path = window.location.pathname;
+    if (SHARE_ROUTE_RE.test(path)) return "app";
+    // The cinematic intro belongs to the site root only — deep links like
+    // /home or /explore jump straight into the app.
+    if (path !== "/") return "app";
     return sessionStorage.getItem("spire_screen") || "opening";
   });
+
+  // Public legal pages render instantly — no opening, landing, or auth gate.
+  const LegalPage = LEGAL_ROUTES[location.pathname];
+  if (LegalPage) {
+    return (
+      <>
+        <OfflineIndicator />
+        <LegalPage />
+      </>
+    );
+  }
 
   const handleScreenChange = (screen) => {
     sessionStorage.setItem("spire_screen", screen);
