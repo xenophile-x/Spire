@@ -1,7 +1,9 @@
 require('dotenv').config();
 const express = require('express');
+const { Readable } = require('stream');
 const { Client, GatewayIntentBits, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
+const ffmpegPath = require('ffmpeg-static');
 
 const app = express();
 app.get('/health', (_, res) => res.send('OK'));
@@ -12,7 +14,6 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates]
 });
 
-const player = createAudioPlayer();
 const queue = new Map();
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -51,40 +52,67 @@ async function driveRequest(accessToken, endpoint, options = {}) {
 }
 
 function getQueue(guildId) {
-  if (!queue.has(guildId)) queue.set(guildId, { tracks: [], current: null, playing: false });
+  if (!queue.has(guildId)) {
+    const player = createAudioPlayer();
+
+    player.on(AudioPlayerStatus.Idle, async () => {
+      const q = queue.get(guildId);
+      if (q && q.tracks.length > 0) {
+        try {
+          const connection = getVoiceConnection(guildId);
+          const accessToken = await getUserAccessToken(q.ownerDiscordId);
+          await playNext(guildId, connection, accessToken);
+        } catch (err) {
+          console.error('Auto-play next failed:', err);
+        }
+      } else if (q) {
+        q.playing = false;
+        q.current = null;
+      }
+    });
+
+    queue.set(guildId, { tracks: [], current: null, playing: false, player });
+  }
   return queue.get(guildId);
 }
 
-function playNext(guildId, connection, accessToken) {
+async function playNext(guildId, connection, accessToken) {
   const q = getQueue(guildId);
   if (q.tracks.length === 0) {
     q.playing = false;
     q.current = null;
     return;
   }
+
   const track = q.tracks.shift();
   q.current = track;
   q.playing = true;
 
-  const streamUrl = `https://drive.google.com/uc?export=download&id=${track.id}`;
-  const resource = createAudioResource(streamUrl, { inlineVolume: true });
-  connection.subscribe(player);
-  player.play(resource);
-}
+  try {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${track.id}?alt=media`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
 
-player.on(AudioPlayerStatus.Idle, async () => {
-  for (const [guildId, connection] of client.voice.adapters) {
-    const q = getQueue(guildId);
-    if (q.playing && q.tracks.length > 0) {
-      try {
-        const accessToken = await getUserAccessToken(q.ownerDiscordId);
-        playNext(guildId, connection, accessToken);
-      } catch (err) {
-        console.error('Auto-play next failed:', err);
-      }
+    if (!res.ok) throw new Error(`Drive stream failed: ${res.statusText}`);
+
+    const nodeStream = Readable.fromWeb(res.body);
+    const resource = createAudioResource(nodeStream, {
+      inlineVolume: true,
+      ffmpeg: ffmpegPath,
+    });
+
+    connection.subscribe(q.player);
+    q.player.play(resource);
+  } catch (error) {
+    console.error("Stream error:", error);
+    if (q.tracks.length > 0) {
+      await playNext(guildId, connection, accessToken);
+    } else {
+      q.playing = false;
+      q.current = null;
     }
   }
-});
+}
 
 client.on('interactionCreate', async interaction => {
   const discordId = interaction.user.id;
@@ -116,7 +144,7 @@ client.on('interactionCreate', async interaction => {
   const { commandName, guildId, member } = interaction;
   const voiceChannel = member.voice.channel;
 
-  if (!voiceChannel && commandName !== 'stop') {
+  if (!voiceChannel && commandName !== 'stop' && commandName !== 'login') {
     return interaction.reply({ content: 'You must be in a voice channel!', ephemeral: true });
   }
 
@@ -139,7 +167,7 @@ client.on('interactionCreate', async interaction => {
       q.tracks.push({ id: fileData.id, name: fileData.name });
 
       if (!q.playing) {
-        playNext(guildId, connection, accessToken);
+        await playNext(guildId, connection, accessToken);
       }
       await interaction.editReply(`🎶 Added to queue: **${fileData.name}**`);
     } catch (err) {
@@ -150,7 +178,7 @@ client.on('interactionCreate', async interaction => {
 
   if (commandName === 'pause') {
     if (q.playing) {
-      player.pause();
+      q.player.pause();
       q.playing = false;
       await interaction.reply('⏸️ Paused.');
     } else {
@@ -160,7 +188,7 @@ client.on('interactionCreate', async interaction => {
 
   if (commandName === 'resume') {
     if (!q.playing && q.current) {
-      player.unpause();
+      q.player.unpause();
       q.playing = true;
       await interaction.reply('▶️ Resumed.');
     } else {
@@ -170,7 +198,7 @@ client.on('interactionCreate', async interaction => {
 
   if (commandName === 'stop') {
     if (connection) {
-      player.stop();
+      q.player.stop();
       q.tracks = [];
       q.current = null;
       q.playing = false;
@@ -198,18 +226,11 @@ client.on('interactionCreate', async interaction => {
 
   if (commandName === 'playlist') {
     const folderId = interaction.options.getString('name');
-    if (!voiceChannel) {
-      return interaction.reply({ content: 'You must be in a voice channel!', ephemeral: true });
-    }
     await interaction.deferReply();
 
     try {
       const accessToken = await getUserAccessToken(discordId);
-
-      // Get folder name for display
       const folderData = await driveRequest(accessToken, `/drive/v3/files/${folderId}?fields=id,name`);
-
-      // Get all audio files in folder
       const filesData = await driveRequest(accessToken, `/drive/v3/files?q=${encodeURIComponent(`'${folderId}' in parents and mimeType contains 'audio/'`)}&fields=files(id,name)&pageSize=100`);
 
       const tracks = (filesData.files || []).map(file => ({ id: file.id, name: file.name }));
@@ -221,7 +242,7 @@ client.on('interactionCreate', async interaction => {
       q.tracks.push(...tracks);
 
       if (!q.playing) {
-        playNext(guildId, connection, accessToken);
+        await playNext(guildId, connection, accessToken);
       }
 
       await interaction.editReply(`🎵 Added **${tracks.length} tracks** from **"${folderData.name}"** to queue.`);
