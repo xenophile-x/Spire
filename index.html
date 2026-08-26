@@ -2,10 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Spire</title>
 
+    <title>Spire — Your Personal Cloud Music Player</title>
+    <meta
+      name="description"
+      content="Spire is a personal music streaming app that stores your music library in your own Google Drive. Upload your songs, stream them anywhere, build playlists, sing along with synced lyrics and karaoke, and share your library with friends."
+    />
+    <meta name="google-site-verification" content="google5220ec0b61edc75e" />
+    <link rel="canonical" href="https://spire-wheat-ten.vercel.app/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Spire" />
+    <meta property="og:title" content="Spire — Your Personal Cloud Music Player" />
+    <meta
+      property="og:description"
+      content="Spire keeps your music library in your own Google Drive. Upload, stream, create playlists, enjoy synced lyrics and karaoke, and share your library with friends."
+    />
+    <meta property="og:url" content="https://spire-wheat-ten.vercel.app/" />
+    <meta property="og:image" content="https://spire-wheat-ten.vercel.app/spire.png" />
+    <meta name="twitter:card" content="summary" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,9 +31,35 @@
     <link rel="preconnect" href="https://videos.pexels.com" crossorigin>
     <link rel="preconnect" href="https://images.unsplash.com">
 
+    <style>
+      .spire-static-home {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        padding: 48px 24px;
+        text-align: center;
+      }
+      .spire-static-home img { width: 96px; height: 96px; border-radius: 24px; }
+      .spire-static-home h1 { font-size: 2.5rem; margin: 0; letter-spacing: -0.02em; }
+      .spire-static-home p { max-width: 640px; line-height: 1.7; color: rgba(255,255,255,0.75); margin: 0; }
+    </style>
   </head>
   <body class="bg-neutral-950 text-white font-sans antialiased">
-    <div id="root"></div>
+    <div id="root">
+      <div class="spire-static-home">
+        <img src="/spire.png" alt="Spire logo" />
+        <h1>Spire</h1>
+        <p>
+          Spire is a personal cloud music player. It keeps your entire music
+          library in your own Google Drive — upload your songs once and stream
+          them anywhere. Build playlists, follow synced lyrics, record karaoke,
+          explore radio stations, and share your library with friends.
+        </p>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -6,6 +6,7 @@ import { PlayerProvider } from "@/context/PlayerContext";
 import AppLayout from "@/components/AppLayout";
 import Opening from "@/components/Opening";
 import Landing from "@/components/Landing";
+import PublicHome from "@/components/PublicHome";
 import OfflineIndicator from "@/components/OfflineIndicator";
 import TermsView from "@/views/TermsView";
 import PrivacyView from "@/views/PrivacyView";
@@ -97,7 +98,7 @@ function AppContent({ onBackToLanding }) {
               className="w-20 h-20 opacity-90 md:w-24 md:h-24 drop-shadow-2xl"
             />
             <h1 className="text-3xl md:text-4xl font-bold text-white tracking-wide drop-shadow-lg">
-              Welcome Back !
+              Welcome to Spire
             </h1>
           </div>
 
@@ -143,7 +144,7 @@ export default function App() {
     // The cinematic intro belongs to the site root only — deep links like
     // /home or /explore jump straight into the app.
     if (path !== "/") return "app";
-    return sessionStorage.getItem("spire_screen") || "opening";
+    return sessionStorage.getItem("spire_screen") || "home";
   });
 
   // Public legal pages render instantly — no opening, landing, or auth gate.
@@ -167,6 +168,15 @@ export default function App() {
       <>
         <OfflineIndicator />
         <SharedLibraryView />
+      </>
+    );
+  }
+
+  if (currentScreen === "home") {
+    return (
+      <>
+        <OfflineIndicator />
+        <PublicHome onEnterExperience={() => handleScreenChange("opening")} />
       </>
     );
   }
