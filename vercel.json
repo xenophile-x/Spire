@@ -2,8 +2,7 @@
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/index.html",
-      "lastStatusCode": 200
+      "destination": "/index.html"
     }
   ]
 }
