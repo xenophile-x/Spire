@@ -91,11 +91,17 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.isAutocomplete()) {
     const focusedValue = interaction.options.getFocused();
+    const commandName = interaction.commandName;
     if (!focusedValue) return interaction.respond([]);
 
     try {
       const accessToken = await getUserAccessToken(discordId);
-      const data = await driveRequest(accessToken, `/drive/v3/files?q=${encodeURIComponent(`name contains '${focusedValue}' and mimeType contains 'audio/'`)}&fields=files(id,name)&pageSize=5`);
+      let data;
+      if (commandName === 'playlist') {
+        data = await driveRequest(accessToken, `/drive/v3/files?q=${encodeURIComponent(`name contains '${focusedValue}' and mimeType = 'application/vnd.google-apps.folder'`)}&fields=files(id,name)&pageSize=5`);
+      } else {
+        data = await driveRequest(accessToken, `/drive/v3/files?q=${encodeURIComponent(`name contains '${focusedValue}' and mimeType contains 'audio/'`)}&fields=files(id,name)&pageSize=5`);
+      }
       const choices = (data.files || []).map(file => ({ name: file.name, value: file.id }));
       await interaction.respond(choices);
     } catch (err) {
@@ -188,6 +194,41 @@ client.on('interactionCreate', async interaction => {
       components: [row],
       ephemeral: true,
     });
+  }
+
+  if (commandName === 'playlist') {
+    const folderId = interaction.options.getString('name');
+    if (!voiceChannel) {
+      return interaction.reply({ content: 'You must be in a voice channel!', ephemeral: true });
+    }
+    await interaction.deferReply();
+
+    try {
+      const accessToken = await getUserAccessToken(discordId);
+
+      // Get folder name for display
+      const folderData = await driveRequest(accessToken, `/drive/v3/files/${folderId}?fields=id,name`);
+
+      // Get all audio files in folder
+      const filesData = await driveRequest(accessToken, `/drive/v3/files?q=${encodeURIComponent(`'${folderId}' in parents and mimeType contains 'audio/'`)}&fields=files(id,name)&pageSize=100`);
+
+      const tracks = (filesData.files || []).map(file => ({ id: file.id, name: file.name }));
+
+      if (tracks.length === 0) {
+        return interaction.editReply('📂 Folder is empty or has no audio files.');
+      }
+
+      q.tracks.push(...tracks);
+
+      if (!q.playing) {
+        playNext(guildId, connection, accessToken);
+      }
+
+      await interaction.editReply(`🎵 Added **${tracks.length} tracks** from **"${folderData.name}"** to queue.`);
+    } catch (err) {
+      console.error('Playlist error:', err);
+      await interaction.editReply('Failed to load playlist. Connect Google Drive in Spire web app first.');
+    }
   }
 });
 

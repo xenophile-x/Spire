@@ -22,6 +22,14 @@ const commands = [
   new SlashCommandBuilder()
     .setName('login')
     .setDescription('Connect your Google Drive account'),
+  new SlashCommandBuilder()
+    .setName('playlist')
+    .setDescription('Play a Google Drive folder as playlist')
+    .addStringOption(option =>
+      option.setName('name')
+        .setDescription('Folder name (playlist name)')
+        .setRequired(true)
+        .setAutocomplete(true)),
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
