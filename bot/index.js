@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
 
 const app = express();
@@ -17,6 +17,7 @@ const queue = new Map();
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const WEB_APP_URL = process.env.WEB_APP_URL || 'https://spire-wheat-ten.vercel.app';
 
 async function getUserAccessToken(discordId) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/get-drive-access-token`, {
@@ -172,6 +173,21 @@ client.on('interactionCreate', async interaction => {
     } else {
       await interaction.reply({ content: 'Not in a voice channel.', ephemeral: true });
     }
+  }
+
+  if (commandName === 'login') {
+    const button = new ButtonBuilder()
+      .setLabel('Connect Google Drive')
+      .setStyle(ButtonStyle.Link)
+      .setURL(`${WEB_APP_URL}/settings`);
+
+    const row = new ActionRowBuilder().addComponents(button);
+
+    await interaction.reply({
+      content: 'Click below to connect your Google Drive account:',
+      components: [row],
+      ephemeral: true,
+    });
   }
 });
 
