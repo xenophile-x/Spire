@@ -392,14 +392,14 @@ function ListenTogetherCard({
               </div>
 
               <div className="flex items-center gap-2 pt-1">
-                {members.length === 0 ? (
+                {(members?.length ?? 0) === 0 ? (
                   <p className="text-[10px] font-medium text-white/40">
                     Waiting for listeners to join...
                   </p>
                 ) : (
                   <>
                     <div className="flex -space-x-1.5">
-                      {members.slice(0, 6).map((member) => (
+                      {(members ?? []).slice(0, 6).map((member) => (
                         <LiquidGlass
                           key={member.id}
                           blur={5}
@@ -413,7 +413,7 @@ function ListenTogetherCard({
                       ))}
                     </div>
                     <p className="text-[10px] font-medium text-white/50">
-                      {members.length} {members.length === 1 ? "listener" : "listeners"} in sync
+                      {(members?.length ?? 0)} {(members?.length ?? 0) === 1 ? "listener" : "listeners"} in sync
                     </p>
                   </>
                 )}
