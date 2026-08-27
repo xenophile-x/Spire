@@ -224,6 +224,48 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
+  if (commandName === 'link') {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/linking_codes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'apikey': SUPABASE_SERVICE_ROLE_KEY,
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify({
+          code,
+          discord_id: discordId,
+          expires_at: expiresAt,
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error('Failed to create linking code:', errText);
+        return interaction.reply({
+          content: 'Failed to generate linking code. Please try again.',
+          ephemeral: true,
+        });
+      }
+
+      await interaction.reply({
+        content: `Your linking code is \`${code}\`.\nGo to **spire-wheat-ten.vercel.app/settings** and enter it in the Discord section.\n\n*Code expires in 5 minutes.*`,
+        ephemeral: true,
+      });
+    } catch (err) {
+      console.error('Link command error:', err);
+      await interaction.reply({
+        content: 'Something went wrong. Please try again.',
+        ephemeral: true,
+      });
+    }
+  }
+
   if (commandName === 'playlist') {
     const folderId = interaction.options.getString('name');
     await interaction.deferReply();

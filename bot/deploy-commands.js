@@ -30,6 +30,9 @@ const commands = [
         .setDescription('Folder name (playlist name)')
         .setRequired(true)
         .setAutocomplete(true)),
+  new SlashCommandBuilder()
+    .setName('link')
+    .setDescription('Generate a code to link your Discord account to Spire'),
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
