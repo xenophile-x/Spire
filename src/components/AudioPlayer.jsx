@@ -119,8 +119,16 @@ export default function AudioPlayer({
         });
       }
     } else {
-      if (onTimeUpdate && audioRef.current) {
-        onTimeUpdate(audioRef.current.currentTime);
+      if (onTimeUpdate && audioRef.current && audioRef.current.readyState > 0) {
+        try {
+          onTimeUpdate(audioRef.current.currentTime);
+        } catch (err) {
+          if (err.name === "ReferenceError" && err.message.includes("EmptyRanges")) {
+            console.warn("WebKit EmptyRanges bug caught on pause, ignoring.");
+          } else {
+            console.error("[AudioPlayer] pause timeUpdate error:", err);
+          }
+        }
       }
       audioRef.current.pause();
     }
@@ -180,8 +188,16 @@ export default function AudioPlayer({
         if (elementRef) elementRef.current = el;
       }}
       onTimeUpdate={() => {
-        if (audioRef.current && onTimeUpdate) {
+        if (!audioRef.current || !onTimeUpdate) return;
+        if (audioRef.current.readyState === 0) return;
+        try {
           onTimeUpdate(audioRef.current.currentTime);
+        } catch (err) {
+          if (err.name === "ReferenceError" && err.message.includes("EmptyRanges")) {
+            console.warn("WebKit EmptyRanges bug caught, ignoring.");
+          } else {
+            console.error("[AudioPlayer] timeUpdate error:", err);
+          }
         }
       }}
       onLoadedMetadata={() => {

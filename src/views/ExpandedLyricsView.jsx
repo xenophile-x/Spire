@@ -348,6 +348,8 @@ export default function ExpandedLyricsView({
           onToggleRadio={onToggleRadio}
           isLiked={isLiked}
           onToggleLike={onToggleLike}
+          isRepeat={_isRepeat}
+          onToggleRepeat={_onToggleRepeat}
           onOpenExpandedView={() => setShowLyrics(false)}
           onOpenLyrics={() => setShowLyrics((prev) => !prev)}
           playlists={playlists}

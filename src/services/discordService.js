@@ -114,6 +114,14 @@ export async function setDiscordActivity(track, isPlaying, currentTime = 0) {
   }
 }
 
+export async function openExternalLink(url) {
+  if (!isInDiscordClient()) return false;
+  const sdk = getSdk();
+  await withTimeout(sdk.ready(), READY_TIMEOUT_MS, "opening external link");
+  await sdk.commands.openExternalLink({ url });
+  return true;
+}
+
 export function getDiscordUser() {
   return currentUser;
 }

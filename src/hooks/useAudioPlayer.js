@@ -52,7 +52,18 @@ export function useAudioPlayer({ onEnded } = {}) {
     audio.crossOrigin = "anonymous";
     audioRef.current = audio;
 
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onTimeUpdate = () => {
+      if (audio.readyState === 0) return;
+      try {
+        setCurrentTime(audio.currentTime);
+      } catch (err) {
+        if (err.name === "ReferenceError" && err.message.includes("EmptyRanges")) {
+          console.warn("WebKit EmptyRanges bug caught, ignoring.");
+        } else {
+          console.error("[useAudioPlayer] timeUpdate error:", err);
+        }
+      }
+    };
     const onLoadedMetadata = () => setDuration(audio.duration || 0);
     const handleEnded = () => {
       setIsPlaying(false);

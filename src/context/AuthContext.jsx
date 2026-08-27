@@ -13,7 +13,7 @@ import {
   getGoogleAccessToken,
   clearGoogleAccessTokenCache,
 } from "@/lib/googleTokenClient";
-import { isInDiscordClient, getSdk } from "@/services/discordService";
+import { isInDiscordClient, openExternalLink } from "@/services/discordService";
 
 const AuthContext = createContext({});
 
@@ -150,8 +150,7 @@ export const AuthProvider = ({ children }) => {
 
     if (inDiscord && data?.url) {
       try {
-        const sdk = await getSdk();
-        await sdk.commands.openExternalLink({ url: data.url });
+        await openExternalLink(data.url);
       } catch (sdkError) {
         console.error("Failed to open external link via Discord SDK:", sdkError);
       }
