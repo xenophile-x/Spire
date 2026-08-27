@@ -16,6 +16,7 @@ import SyncedLyrics from "@/components/SyncedLyrics";
 import { fetchLyrics } from "@/services/lyricsService";
 import { usePlayerTime } from "@/context/PlayerContext";
 import { useNavigate } from "react-router-dom";
+import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
 
 function rawLrcFor(track) {
   return (
@@ -282,24 +283,19 @@ export default function KaraokeView({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-5">
-
-      <div className="flex shrink-0 items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-black tracking-tighter text-white sm:text-3xl">
-            Karaoke
-          </h1>
-          <p className="text-xs font-medium text-white/60">
-            Pick a track, sing along, and record your voice with the music
-          </p>
-        </div>
-        <button
-          onClick={() => navigate("/karaoke/recordings")}
-          className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-xs font-bold text-white/90 transition-all hover:bg-white/20"
-        >
-          <span className="material-symbols-rounded text-base">fiber_smart_record</span>
-          My Recordings
-        </button>
-      </div>
+      <StickyGlassHeader
+        title="Karaoke"
+        subtitle="Pick a track, sing along, and record"
+        action={
+          <button
+            onClick={() => navigate("/karaoke/recordings")}
+            className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-xs font-bold text-white/90 transition-all hover:bg-white/20"
+          >
+            <span className="material-symbols-rounded text-base">fiber_smart_record</span>
+            My Recordings
+          </button>
+        }
+      />
 
       <div className="grid min-h-0 flex-1 auto-rows-[minmax(0,1fr)] grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">
 

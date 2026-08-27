@@ -1,4 +1,4 @@
-"use client";;
+"use client";
 import { glassVariantStyles } from "@/lib/glass-variants";
 import { cn } from "@/lib/utils";
 
@@ -10,14 +10,23 @@ function GlassButton({
   glassVariant = "liquid-refract",
   ...props
 }) {
-  if (glassVariant === "liquid-refract") {
+  const variantStyles = glassVariantStyles[glassVariant] || "";
+  const isLiquidRefract = glassVariant === "liquid-refract";
+
+  if (isLiquidRefract) {
     return (
-      <LiquidGlass>
+      <LiquidGlass
+        className={cn("rounded-full", className)}
+        blur={8}
+        refraction={10}
+        saturation={1.5}
+      >
         <Button
           data-slot="glass-button"
           data-glass-variant={glassVariant}
           className={cn(
             "text-foreground cursor-pointer bg-transparent border-0 shadow-none",
+            variantStyles,
             className
           )}
           {...props} />
@@ -31,7 +40,7 @@ function GlassButton({
       data-glass-variant={glassVariant}
       className={cn(
         "text-foreground cursor-pointer",
-        glassVariantStyles[glassVariant],
+        variantStyles,
         className
       )}
       {...props} />

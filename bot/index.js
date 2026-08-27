@@ -1,9 +1,8 @@
 require('dotenv').config();
 const express = require('express');
-const { Readable } = require('stream');
 const { Client, GatewayIntentBits, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
-const ffmpegPath = require('ffmpeg-static');
+const { joinVoiceChannel, createAudioPlayer, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
+const { getValidAccessToken, driveRequest, createDriveAudioResource, escapeDriveQuery } = require('./driveStream');
 
 const app = express();
 app.get('/health', (_, res) => res.send('OK'));
@@ -15,41 +14,12 @@ const client = new Client({
 });
 
 const queue = new Map();
+const linkRateLimit = new Map(); // discordId -> timestamp, 30s window
+const VOICE_EXEMPT = new Set(['stop', 'login', 'link']);
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://spire-wheat-ten.vercel.app';
-
-async function getUserAccessToken(discordId) {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/get-drive-access-token`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-    },
-    body: JSON.stringify({ discord_id: discordId }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to get access token');
-  }
-  const data = await res.json();
-  return data.access_token;
-}
-
-async function driveRequest(accessToken, endpoint, options = {}) {
-  const res = await fetch(`https://www.googleapis.com${endpoint}`, {
-    ...options,
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-  if (!res.ok) throw new Error(`Drive API error: ${res.status}`);
-  return res.json();
-}
 
 function getQueue(guildId) {
   if (!queue.has(guildId)) {
@@ -60,8 +30,7 @@ function getQueue(guildId) {
       if (q && q.tracks.length > 0) {
         try {
           const connection = getVoiceConnection(guildId);
-          const accessToken = await getUserAccessToken(q.ownerDiscordId);
-          await playNext(guildId, connection, accessToken);
+          await playNext(guildId, connection);
         } catch (err) {
           console.error('Auto-play next failed:', err);
         }
@@ -89,24 +58,21 @@ async function playNext(guildId, connection, accessToken) {
   q.playing = true;
 
   try {
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${track.id}?alt=media`, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-
-    if (!res.ok) throw new Error(`Drive stream failed: ${res.statusText}`);
-
-    const nodeStream = Readable.fromWeb(res.body);
-    const resource = createAudioResource(nodeStream, {
-      inlineVolume: true,
-      ffmpeg: ffmpegPath,
-    });
-
+    // Better way: use modular driveStream with retry + auto token refresh
+    // accessToken param kept for backward compat, but we use owner id for fresh token
+    const resource = await createDriveAudioResource(q.ownerDiscordId, track.id, { retries: 1 });
     connection.subscribe(q.player);
     q.player.play(resource);
   } catch (error) {
     console.error("Stream error:", error);
     if (q.tracks.length > 0) {
-      await playNext(guildId, connection, accessToken);
+      try {
+        const freshToken = await getValidAccessToken(q.ownerDiscordId);
+        await playNext(guildId, connection, freshToken);
+      } catch (e) {
+        q.playing = false;
+        q.current = null;
+      }
     } else {
       q.playing = false;
       q.current = null;
@@ -123,12 +89,13 @@ client.on('interactionCreate', async interaction => {
     if (!focusedValue) return interaction.respond([]);
 
     try {
-      const accessToken = await getUserAccessToken(discordId);
+      const accessToken = await getValidAccessToken(discordId);
       let data;
+      const safeValue = escapeDriveQuery(focusedValue);
       if (commandName === 'playlist') {
-        data = await driveRequest(accessToken, `/drive/v3/files?q=${encodeURIComponent(`name contains '${focusedValue}' and mimeType = 'application/vnd.google-apps.folder'`)}&fields=files(id,name)&pageSize=5`);
+        data = await driveRequest(accessToken, `/drive/v3/files?q=${encodeURIComponent(`name contains '${safeValue}' and mimeType = 'application/vnd.google-apps.folder'`)}&fields=files(id,name)&pageSize=5`);
       } else {
-        data = await driveRequest(accessToken, `/drive/v3/files?q=${encodeURIComponent(`name contains '${focusedValue}' and mimeType contains 'audio/'`)}&fields=files(id,name)&pageSize=5`);
+        data = await driveRequest(accessToken, `/drive/v3/files?q=${encodeURIComponent(`name contains '${safeValue}' and mimeType contains 'audio/'`)}&fields=files(id,name)&pageSize=5`);
       }
       const choices = (data.files || []).map(file => ({ name: file.name, value: file.id }));
       await interaction.respond(choices);
@@ -144,7 +111,7 @@ client.on('interactionCreate', async interaction => {
   const { commandName, guildId, member } = interaction;
   const voiceChannel = member.voice.channel;
 
-  if (!voiceChannel && commandName !== 'stop' && commandName !== 'login') {
+  if (!voiceChannel && !VOICE_EXEMPT.has(commandName)) {
     return interaction.reply({ content: 'You must be in a voice channel!', ephemeral: true });
   }
 
@@ -162,7 +129,7 @@ client.on('interactionCreate', async interaction => {
     await interaction.deferReply();
 
     try {
-      const accessToken = await getUserAccessToken(discordId);
+      const accessToken = await getValidAccessToken(discordId);
       const fileData = await driveRequest(accessToken, `/drive/v3/files/${fileId}?fields=id,name`);
       q.tracks.push({ id: fileData.id, name: fileData.name });
 
@@ -225,44 +192,53 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (commandName === 'link') {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const now = Date.now();
+    const last = linkRateLimit.get(discordId);
+    if (last && now - last < 30_000) {
+      const wait = Math.ceil((30_000 - (now - last)) / 1000);
+      return interaction.reply({ content: `Please wait ${wait}s before generating a new code.`, ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
 
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/linking_codes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          'apikey': SUPABASE_SERVICE_ROLE_KEY,
-          'Prefer': 'return=minimal',
-        },
-        body: JSON.stringify({
-          code,
-          discord_id: discordId,
-          expires_at: expiresAt,
-        }),
+      const checkRes = await fetch(`${SUPABASE_URL}/rest/v1/users?discord_id=eq.${discordId}&select=id`, {
+        headers: { 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'apikey': SUPABASE_SERVICE_ROLE_KEY },
       });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        console.error('Failed to create linking code:', errText);
-        return interaction.reply({
-          content: 'Failed to generate linking code. Please try again.',
-          ephemeral: true,
-        });
+      const linked = await checkRes.json().catch(() => []);
+      if (Array.isArray(linked) && linked.length > 0) {
+        return interaction.editReply('✅ Your Discord is already linked to Spire. No need for a new code.');
       }
 
-      await interaction.reply({
-        content: `Your linking code is \`${code}\`.\nGo to **spire-wheat-ten.vercel.app/settings** and enter it in the Discord section.\n\n*Code expires in 5 minutes.*`,
-        ephemeral: true,
+      await fetch(`${SUPABASE_URL}/rest/v1/linking_codes?discord_id=eq.${discordId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'apikey': SUPABASE_SERVICE_ROLE_KEY },
       });
+
+      let code = null;
+      let inserted = false;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        code = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/linking_codes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'apikey': SUPABASE_SERVICE_ROLE_KEY, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ code, discord_id: discordId, expires_at: expiresAt }),
+        });
+        if (res.ok) { inserted = true; break; }
+        if (res.status !== 409) {
+          const t = await res.text();
+          console.error('Link insert failed:', t);
+          return interaction.editReply('Failed to generate linking code. Please try again.');
+        }
+      }
+      if (!inserted || !code) return interaction.editReply('Unable to generate a unique code. Please try again.');
+
+      linkRateLimit.set(discordId, Date.now());
+      return interaction.editReply(`Your verification code is **\`${code}\`**.\\nIt expires in 5 minutes. Enter this code in **${WEB_APP_URL.replace(/^https?:\/\//,'')}/settings** → Discord section.`);
     } catch (err) {
       console.error('Link command error:', err);
-      await interaction.reply({
-        content: 'Something went wrong. Please try again.',
-        ephemeral: true,
-      });
+      return interaction.editReply('An error occurred while generating your code.');
     }
   }
 
@@ -271,7 +247,7 @@ client.on('interactionCreate', async interaction => {
     await interaction.deferReply();
 
     try {
-      const accessToken = await getUserAccessToken(discordId);
+      const accessToken = await getValidAccessToken(discordId);
       const folderData = await driveRequest(accessToken, `/drive/v3/files/${folderId}?fields=id,name`);
       const filesData = await driveRequest(accessToken, `/drive/v3/files?q=${encodeURIComponent(`'${folderId}' in parents and mimeType contains 'audio/'`)}&fields=files(id,name)&pageSize=100`);
 

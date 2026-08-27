@@ -14,6 +14,7 @@ import {
 import { GlassDropdownMenuContent } from "@/components/ui/glasscn/glass-dropdown-menu";
 import PlaylistPoster, { gradientForTitle } from "@/components/PlaylistPoster";
 import { cn } from "@/lib/utils";
+import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
 
 const CONTENT_WRAP_CLASS = "w-full space-y-8 pb-12";
 
@@ -420,8 +421,7 @@ export default function PlaylistsView({
       <div className="w-full text-white font-sans antialiased selection:bg-white selection:text-white">
         <div className="w-full space-y-8 pb-12">
           <div className="mx-auto max-w-5xl px-8 pt-8">
-
-          <div className="mb-6 flex items-center justify-between gap-4">
+          <div className="sticky top-0 z-30 -mx-8 -mt-8 mb-6 flex items-center justify-between gap-4 px-8 py-4 bg-black/40 backdrop-blur-2xl backdrop-saturate-150 border-b border-white/10 transition-all">
             <LiquidGlass
               blur={10}
               refraction={18}
@@ -678,60 +678,55 @@ export default function PlaylistsView({
     <div className="w-full text-white font-sans antialiased selection:bg-white selection:text-white">
       <div className={CONTENT_WRAP_CLASS}>
 
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white">Your Playlists</h1>
-            <p className="text-xs font-medium text-white/50">
-              {isSelectionMode
-                ? `${selectedCount} selected`
-                : `${playlists.length} ${playlists.length === 1 ? "playlist" : "playlists"}`}
-            </p>
-          </div>
+        <StickyGlassHeader
+          title="Your Playlists"
+          subtitle={isSelectionMode ? `${selectedCount} selected` : `${playlists.length} ${playlists.length === 1 ? "playlist" : "playlists"}`}
+          action={
+            <div className="flex items-center gap-2">
+              {isSelectionMode ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={exitSelectionMode}
+                    className="flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20"
+                  >
+                    <X className="mr-1.5 h-4 w-4" />
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteSelected}
+                    disabled={selectedCount === 0}
+                    className="flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    <Trash2 className="mr-1.5 h-4 w-4 text-white" />
+                    Delete Selected
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={enterSelectionMode}
+                    className="flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20"
+                  >
+                    <Check className="mr-1.5 h-4 w-4" />
+                    Select
+                  </button>
 
-          <div className="flex items-center gap-2">
-            {isSelectionMode ? (
-              <>
-                <button
-                  type="button"
-                  onClick={exitSelectionMode}
-                  className="flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20"
-                >
-                  <X className="mr-1.5 h-4 w-4" />
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteSelected}
-                  disabled={selectedCount === 0}
-                  className="flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  <Trash2 className="mr-1.5 h-4 w-4 text-white" />
-                  Delete Selected
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={enterSelectionMode}
-                  className="flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20"
-                >
-                  <Check className="mr-1.5 h-4 w-4" />
-                  Select
-                </button>
-
-                <button
-                  type="button"
-                  onClick={openCreate}
-                  className="flex items-center rounded-full bg-white/10 border border-white/20 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20"
-                >
-                  <Plus className="mr-1.5 h-4 w-4 stroke-[2.5]" />
-                  New Playlist
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+                  <button
+                    type="button"
+                    onClick={openCreate}
+                    className="flex items-center rounded-full bg-white/10 border border-white/20 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20"
+                  >
+                    <Plus className="mr-1.5 h-4 w-4 stroke-[2.5]" />
+                    New Playlist
+                  </button>
+                </>
+              )}
+            </div>
+          }
+        />
 
 
         <PlaylistNameDialog

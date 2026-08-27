@@ -15,6 +15,7 @@ import { GoogleIcon } from "@/assets/icons";
 import { getOptimizedUnsplashUrl } from "@/utils/imageUtils";
 import { GlassButton } from "@/components/ui/glasscn/glass-button";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
+import { useGlassVariant } from "@/context/GlassVariantContext";
 import "material-symbols/rounded.css";
 
 const DEFAULT_BG_IMAGE =
@@ -37,6 +38,7 @@ const LEGAL_ROUTES = {
 
 function AppContent({ onBackToLanding }) {
   const { user, loading, signInWithGoogle } = useAuth();
+  const { primaryVariant } = useGlassVariant();
 
   const [loginVideoSrc, setLoginVideoSrc] = React.useState(LOCAL_BG_VIDEO);
 
@@ -105,7 +107,7 @@ function AppContent({ onBackToLanding }) {
           <div className="transition-transform duration-300 hover:scale-105 active:scale-95">
             <GlassButton
               onClick={signInWithGoogle}
-              glassVariant="liquid-refract"
+              glassVariant={primaryVariant}
               className="flex items-center justify-center gap-3 rounded-full bg-transparent px-8 py-5 text-sm font-medium text-white backdrop-blur-md md:text-base"
             >
               <GoogleIcon className="w-5 h-5" />

@@ -7,6 +7,7 @@ import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
 import ImageWithFallback from "@/components/ImageWithFallback";
 import ArtistOverview from "@/components/artist/ArtistOverview";
 import ArtistWikiDetails from "@/components/artist/ArtistWikiDetails";
+import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
 import {
   trackMatchesArtist,
   splitArtistNames,
@@ -154,9 +155,7 @@ export default function ArtistView({
 
 
       <div className="relative z-10 flex flex-col flex-1 min-h-0 p-8 sm:p-12 overflow-y-auto custom-scrollbar">
-
-        <div className="flex items-center justify-between mb-16 sm:mb-24 shrink-0">
-
+        <div className="sticky top-0 z-30 -mx-8 sm:-mx-12 -mt-8 sm:-mt-12 mb-6 sm:mb-8 flex items-center justify-between gap-4 px-8 sm:px-12 py-4 bg-black/40 backdrop-blur-2xl backdrop-saturate-150 border-b border-white/10 will-change-transform">
           <LiquidGlass
             blur={10}
             refraction={18}
@@ -169,7 +168,6 @@ export default function ArtistView({
               arrow_back_ios
             </span>
           </LiquidGlass>
-
 
           <LiquidGlass
             blur={10}
@@ -202,13 +200,12 @@ export default function ArtistView({
           </LiquidGlass>
         </div>
 
-
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-10 w-full shrink-0">
           <div className="flex-1 min-w-0 pr-4">
-            <h1 className="text-5xl font-black tracking-tighter text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.6)] sm:text-7xl break-words leading-[0.95]">
+            <h1 className="text-[clamp(2.25rem,5vw,4.5rem)] font-black tracking-tighter text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.6)] break-words leading-[0.95] transition-all duration-300">
               {artistNameDecoded}
             </h1>
-            <p className="mt-2 text-sm font-medium text-white/85 tracking-wide drop-shadow-[0_1px_4px_rgba(0,0,0,0.7)]">
+            <p className="mt-2 text-[clamp(0.75rem,1.5vw,0.875rem)] font-medium text-white/85 tracking-wide drop-shadow-[0_1px_4px_rgba(0,0,0,0.7)]">
               {artistTracks.length} song
               {artistTracks.length !== 1 ? "s" : ""} in library
             </p>

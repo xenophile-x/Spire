@@ -20,7 +20,7 @@ import { processAudioUpload } from "@/services/uploadPipeline";
 import { deleteUserTrack } from "@/services/supabaseService";
 import { uploadBackgroundToDrive, DriveQuotaError } from "@/services/driveService";
 import { getValidDriveToken } from "@/utils/driveApi";
-import { connectDiscord, setDiscordActivity, getDiscordUser } from "@/services/discordService";
+import { connectDiscord, setDiscordActivity, getDiscordUser, isInDiscordClient, fetchLinkedDiscordId } from "@/services/discordService";
 import { useListenTogether } from "@/hooks/useListenTogether";
 import { supabase } from "@/lib/supabaseClient";
 import { isVideoUrl } from "@/utils/imageUtils";
@@ -556,23 +556,51 @@ export default function AppLayout() {
   const [isDiscordConnecting, setIsDiscordConnecting] = useState(false);
   const [linkedDiscordId, setLinkedDiscordId] = useState(null);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    supabase.from("users").select("discord_id").eq("id", user.id).maybeSingle()
-      .then(({ data }) => setLinkedDiscordId(data?.discord_id || null))
-      .catch(() => {});
+  const refreshLinkedDiscordId = useCallback(async () => {
+    if (!user?.id) { setLinkedDiscordId(null); return null; }
+    try {
+      const id = await fetchLinkedDiscordId();
+      setLinkedDiscordId(id);
+      return id;
+    } catch { return null; }
   }, [user?.id]);
+
+  useEffect(() => {
+    refreshLinkedDiscordId();
+  }, [refreshLinkedDiscordId]);
 
   const handleConnectDiscord = useCallback(async () => {
     setIsDiscordConnecting(true);
     try {
       const me = await connectDiscord();
       setDiscordUser(me);
+      await refreshLinkedDiscordId();
     } catch (err) {
       console.error("Discord connect failed:", err);
     } finally {
       setIsDiscordConnecting(false);
     }
+  }, [refreshLinkedDiscordId]);
+
+  // Auto-capture: if inside Discord Activity and user is logged in, silently link
+  useEffect(() => {
+    if (!user?.id || linkedDiscordId || discordUser) return;
+    if (!isInDiscordClient()) return;
+    // Debounce auto-capture to avoid race with auth
+    const t = setTimeout(() => {
+      handleConnectDiscord().catch(() => {});
+    }, 800);
+    return () => clearTimeout(t);
+  }, [user?.id, linkedDiscordId, discordUser, handleConnectDiscord]);
+
+  const handleDiscordLinked = useCallback((newId) => {
+    if (newId) setLinkedDiscordId(newId);
+    else refreshLinkedDiscordId();
+  }, [refreshLinkedDiscordId]);
+
+  const handleDiscordUnlinked = useCallback(() => {
+    setLinkedDiscordId(null);
+    setDiscordUser(null);
   }, []);
 
   useEffect(() => {
@@ -662,6 +690,8 @@ export default function AppLayout() {
                   isDiscordConnecting={isDiscordConnecting}
                   onConnectDiscord={handleConnectDiscord}
                   linkedDiscordId={linkedDiscordId}
+                  onDiscordLinked={handleDiscordLinked}
+                  onDiscordUnlinked={handleDiscordUnlinked}
                 />
               </div>
             </TemperedGlassCard>

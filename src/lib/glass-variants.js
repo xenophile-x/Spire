@@ -1,5 +1,3 @@
-export const liquidRefractStyles = "bg-transparent border-0 shadow-none";
-
 export const glassVariantStyles = {
   clear: [
     "backdrop-blur-[2px] backdrop-saturate-[1.9]",
@@ -44,5 +42,22 @@ export const glassVariantStyles = {
 
     "animate-[liquid-drift_18s_ease-in-out_infinite] motion-reduce:animate-none",
   ].join(" "),
-  "liquid-refract": "",
+  "liquid-refract": [
+    "backdrop-blur-[8px] backdrop-saturate-[1.5] backdrop-brightness-[1.02]",
+    "dark:backdrop-saturate-[1.4] dark:backdrop-brightness-[0.98]",
+    "bg-white/[0.08] dark:bg-white/[0.02]",
+    "border border-white/[0.25] dark:border-white/[0.06]",
+    "shadow-[0_8px_32px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.15)]",
+    "dark:shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.05)]",
+  ].join(" "),
+};
+
+export const nightModeVariantStyles = {
+  primary: "frosted",
+  secondary: "clear",
+};
+
+export const dayModeVariantStyles = {
+  primary: "liquid",
+  secondary: "liquid-refract",
 };

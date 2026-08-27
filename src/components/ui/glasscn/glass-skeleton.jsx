@@ -1,4 +1,4 @@
-"use client";;
+"use client";
 import { glassVariantStyles } from "@/lib/glass-variants";
 import { cn } from "@/lib/utils";
 

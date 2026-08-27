@@ -1,4 +1,4 @@
-"use client";;
+"use client";
 import { createContext, forwardRef, useContext } from "react";
 
 import { cn } from "@/lib/utils";

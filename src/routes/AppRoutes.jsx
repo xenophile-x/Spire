@@ -27,6 +27,8 @@ export default function AppRoutes({
   isDiscordConnecting,
   onConnectDiscord,
   linkedDiscordId,
+  onDiscordLinked,
+  onDiscordUnlinked,
 }) {
   const { user } = useAuth();
   const {
@@ -162,6 +164,8 @@ export default function AppRoutes({
             isDiscordConnecting={isDiscordConnecting}
             onConnectDiscord={onConnectDiscord}
             linkedDiscordId={linkedDiscordId}
+            onDiscordLinked={onDiscordLinked}
+            onDiscordUnlinked={onDiscordUnlinked}
           />
         }
       />

@@ -5,7 +5,8 @@ import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
 import { GlassButton } from "@/components/ui/glasscn/glass-button";
 import { useLibrary } from "@/context/LibraryContext";
 import { LibrarySharing } from "@/components/LibrarySharing";
-import { isInDiscordClient, connectDiscordOAuth, redeemLinkCode } from "@/services/discordService";
+import { isInDiscordClient, connectDiscordOAuth, redeemLinkCode, unlinkDiscord, fetchLinkedDiscordId } from "@/services/discordService";
+import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
 import "material-symbols/rounded.css";
 
 function ListenTogetherCard({
@@ -24,6 +25,8 @@ function ListenTogetherCard({
   onConnectDiscord,
   user,
   linkedDiscordId,
+  onDiscordLinked,
+  onDiscordUnlinked,
 }) {
   const [joinCode, setJoinCode] = useState("");
   const [copied, setCopied] = useState(false);
@@ -31,6 +34,7 @@ function ListenTogetherCard({
   const [isLinking, setIsLinking] = useState(false);
   const [linkMessage, setLinkMessage] = useState("");
   const [isOAuthLinking, setIsOAuthLinking] = useState(false);
+  const [isUnlinking, setIsUnlinking] = useState(false);
 
   const { status, roomCode, members, error, connecting, createRoom, joinRoom, leaveRoom } = listen;
   const isDiscordLinked = Boolean(discordUser || linkedDiscordId);
@@ -40,13 +44,35 @@ function ListenTogetherCard({
     setIsLinking(true);
     setLinkMessage("");
     try {
-      await redeemLinkCode(linkCode.trim());
+      const res = await redeemLinkCode(linkCode.trim());
       setLinkMessage("Discord account linked successfully!");
       setLinkCode("");
+      // Refetch linkedDiscordId without hard refresh (Phase 3 UX)
+      if (onDiscordLinked) {
+        try {
+          const fresh = await fetchLinkedDiscordId();
+          onDiscordLinked(fresh || res?.discord_id || null);
+        } catch {}
+      }
     } catch (err) {
       setLinkMessage(err.message || "Invalid or expired code");
     } finally {
       setIsLinking(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    setIsUnlinking(true);
+    setLinkMessage("");
+    try {
+      await unlinkDiscord();
+      setLinkMessage("Discord account unlinked.");
+      if (onDiscordUnlinked) onDiscordUnlinked();
+      else if (onDiscordLinked) onDiscordLinked(null);
+    } catch (err) {
+      setLinkMessage(err.message || "Failed to unlink");
+    } finally {
+      setIsUnlinking(false);
     }
   };
 
@@ -202,7 +228,7 @@ function ListenTogetherCard({
             </GlassButton>
 
             {/* Method 3: Activity SDK (only in Discord client) */}
-            {isInDiscordClient && (
+            {isInDiscordClient() && (
               <GlassButton
                 onClick={onConnectDiscord}
                 disabled={isDiscordConnecting}
@@ -250,7 +276,31 @@ function ListenTogetherCard({
 
             {linkMessage && (
               <p className={`rounded-xl border px-3 py-2 text-[10px] font-medium leading-relaxed ${
-                linkMessage.includes("success")
+                linkMessage.includes("success") || linkMessage.toLowerCase().includes("linked successfully")
+                  ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                  : "border-amber-400/20 bg-amber-400/10 text-amber-200"
+              }`}>
+                {linkMessage}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Linked state: unlink flow */}
+        {isDiscordLinked && (
+          <div className="px-5 py-3">
+            <GlassButton
+              onClick={handleUnlink}
+              disabled={isUnlinking}
+              glassVariant="liquid-refract"
+              className="w-full rounded-xl py-2.5 text-xs font-semibold text-red-300 hover:bg-white/10 disabled:opacity-50"
+            >
+              <span className="material-symbols-rounded mr-1.5 text-base leading-none">link_off</span>
+              {isUnlinking ? "Unlinking..." : "Unlink Discord"}
+            </GlassButton>
+            {linkMessage && (
+              <p className={`mt-3 rounded-xl border px-3 py-2 text-[10px] font-medium leading-relaxed ${
+                linkMessage.includes("unlinked") || linkMessage.toLowerCase().includes("success")
                   ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
                   : "border-amber-400/20 bg-amber-400/10 text-amber-200"
               }`}>
@@ -392,6 +442,8 @@ export default function SettingsView({
   isDiscordConnecting,
   onConnectDiscord,
   linkedDiscordId,
+  onDiscordLinked,
+  onDiscordUnlinked,
 }) {
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
@@ -427,16 +479,19 @@ export default function SettingsView({
   return (
     <>
       <div className="w-full max-w-2xl mx-auto space-y-6 p-4 font-sans text-white select-none">
-        <div className="flex items-center justify-center gap-2 pt-1">
-          <h1 className="text-lg font-bold tracking-wide text-white/90">Personal Info</h1>
-          <LiquidGlass
-            blur={4}
-            refraction={4}
-            className="rounded-full px-2 py-0.5 [--liquid-glass-rim-width:0.5px]"
-          >
-            <span className="text-[10px] font-semibold tracking-wider text-white/90">v1.0.0</span>
-          </LiquidGlass>
-        </div>
+        <StickyGlassHeader
+          title="Personal Info"
+          subtitle={userEmail || "Manage your profile"}
+          action={
+            <LiquidGlass
+              blur={4}
+              refraction={4}
+              className="rounded-full px-3 py-1 [--liquid-glass-rim-width:0.5px]"
+            >
+              <span className="text-[10px] font-semibold tracking-wider text-white/90">v1.0.0</span>
+            </LiquidGlass>
+          }
+        />
 
         <GlassCard
           glassVariant="liquid-refract"
@@ -591,6 +646,8 @@ export default function SettingsView({
           onConnectDiscord={onConnectDiscord}
           user={user}
           linkedDiscordId={linkedDiscordId}
+          onDiscordLinked={onDiscordLinked}
+          onDiscordUnlinked={onDiscordUnlinked}
         />
 
         <div className="flex items-center justify-center gap-4 pb-2 pt-1">

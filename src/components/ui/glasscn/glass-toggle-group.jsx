@@ -1,4 +1,4 @@
-"use client";;
+"use client";
 import { motion, useAnimationControls } from "motion/react";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 

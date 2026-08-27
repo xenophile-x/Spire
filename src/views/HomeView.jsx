@@ -5,6 +5,7 @@ import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
 import { splitArtistNames } from "@/utils/artistNames";
 import { ArtistProfileImage } from "@/components/ui/MediaImages";
 import { InfiniteCarousel } from "@/components/ui/InfiniteCarousel";
+import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -20,39 +21,29 @@ export default function HomeView({
 }) {
   const navigate = useNavigate();
 
-  const recentTracks = useMemo(() => {
+  const { recentTracks, artists } = useMemo(() => {
     const now = Date.now();
-    return userTracks.filter(
-      (t) => t.uploadedAt && now - new Date(t.uploadedAt).getTime() <= ONE_DAY_MS
-    );
-  }, [userTracks]);
-
-  const artists = useMemo(() => {
     const artistMap = {};
-    userTracks.forEach((t) => {
+    const recent = [];
+    for (const t of userTracks) {
+      if (t.uploadedAt && now - new Date(t.uploadedAt).getTime() <= ONE_DAY_MS) {
+        recent.push(t);
+      }
       const names = splitArtistNames(t.artist);
-      if (!names.length) return;
-      names.forEach((name) => {
-        if (
-          name.toLowerCase() === "unknown artist" ||
-          name.toLowerCase() === "unknown"
-        ) {
-          return;
-        }
-        // Level 1: DB photo (track metadata) wins; remote fallback is
-        // resolved lazily by <ArtistProfileImage> only when missing.
+      if (!names.length) continue;
+      for (const name of names) {
+        if (name.toLowerCase() === "unknown artist" || name.toLowerCase() === "unknown") continue;
         const entry =
           artistMap[name] || (artistMap[name] = { name, photo: "", description: "", count: 0 });
-        if (!entry.photo && t.artistPhotoUrl) {
-          entry.photo = t.artistPhotoUrl;
-        }
-        if (!entry.description && t.artistBio) {
-          entry.description = t.artistBio;
-        }
+        if (!entry.photo && t.artistPhotoUrl) entry.photo = t.artistPhotoUrl;
+        if (!entry.description && t.artistBio) entry.description = t.artistBio;
         entry.count += 1;
-      });
-    });
-    return Object.values(artistMap).sort((a, b) => b.count - a.count);
+      }
+    }
+    return {
+      recentTracks: recent,
+      artists: Object.values(artistMap).sort((a, b) => b.count - a.count),
+    };
   }, [userTracks]);
 
   const searchTerm = (searchQuery || "").trim().toLowerCase();
@@ -75,29 +66,29 @@ export default function HomeView({
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-8 pb-12">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Home</h1>
-          <p className="text-xs text-white/50">{userTracks.length} tracks in library</p>
-        </div>
-        <label className="shrink-0 cursor-pointer">
-          <LiquidGlass
-            blur={8}
-            refraction={10}
-            className="rounded-full px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 [--liquid-glass-rim-width:0.5px]"
-          >
-            {isUploading ? "Uploading..." : "Upload Song"}
-          </LiquidGlass>
-          <input
-            type="file"
-            accept="audio/*"
-            multiple
-            onChange={onFileUpload}
-            className="hidden"
-            disabled={isUploading}
-          />
-        </label>
-      </div>
+      <StickyGlassHeader
+        title="Home"
+        subtitle={`${userTracks.length} tracks in library`}
+        action={
+          <label className="shrink-0 cursor-pointer">
+            <LiquidGlass
+              blur={8}
+              refraction={10}
+              className="rounded-full px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 [--liquid-glass-rim-width:0.5px]"
+            >
+              {isUploading ? "Uploading..." : "Upload Song"}
+            </LiquidGlass>
+            <input
+              type="file"
+              accept="audio/*"
+              multiple
+              onChange={onFileUpload}
+              className="hidden"
+              disabled={isUploading}
+            />
+          </label>
+        }
+      />
 
       {userTracks.length === 0 ? (
         <div className="flex flex-col items-center justify-center space-y-2 py-16 text-center text-white/60">

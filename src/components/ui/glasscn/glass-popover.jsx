@@ -1,4 +1,4 @@
-"use client";;
+"use client";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 
 import { glassVariantStyles } from "@/lib/glass-variants";

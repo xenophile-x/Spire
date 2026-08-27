@@ -49,19 +49,12 @@ RETURNS trigger AS $$
 DECLARE
   v_discord_id text;
 BEGIN
-  -- Check if Discord was just linked/updated
+  -- Check raw_user_meta_data for Discord provider
   IF NEW.raw_user_meta_data->>'provider' = 'discord' THEN
     v_discord_id := NEW.raw_user_meta_data->>'provider_id';
+  -- Check raw_app_meta_data as fallback
   ELSIF NEW.raw_app_meta_data->>'provider' = 'discord' THEN
     v_discord_id := NEW.raw_user_meta_data->>'provider_id';
-  END IF;
-
-  -- Also check the identities array (Supabase stores linked providers here)
-  IF v_discord_id IS NULL AND NEW.identities IS NOT NULL THEN
-    SELECT id INTO v_discord_id
-    FROM jsonb_array_elements(NEW.identities) AS ident
-    WHERE ident->>'provider' = 'discord'
-    LIMIT 1;
   END IF;
 
   IF v_discord_id IS NOT NULL THEN
@@ -78,6 +71,6 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 DROP TRIGGER IF EXISTS on_auth_user_discord_link ON auth.users;
 
 CREATE TRIGGER on_auth_user_discord_link
-  AFTER UPDATE OF raw_user_meta_data, identities ON auth.users
+  AFTER INSERT OR UPDATE OF raw_user_meta_data, raw_app_meta_data ON auth.users
   FOR EACH ROW
   EXECUTE FUNCTION public.handle_discord_oauth_link();

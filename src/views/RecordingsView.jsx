@@ -14,6 +14,7 @@ import {
 } from "@/utils/recordingsStore";
 import { deleteDriveFile } from "@/services/driveService";
 import GlassSlider from "@/components/GlassSlider";
+import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
 
 function formatFileSize(bytes) {
   if (!bytes) return "";
@@ -250,34 +251,29 @@ export default function RecordingsView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-5">
-
-      <div className="flex shrink-0 items-center gap-3">
-        <LiquidGlass
-          blur={10}
-          refraction={18}
-          saturation={1.6}
-          onClick={() => navigate("/karaoke")}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              navigate("/karaoke");
-            }
-          }}
-          className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-white/15 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] shadow-lg shadow-black/10 transition-all hover:bg-white/25"
-        >
-          <span className="material-symbols-rounded text-xl text-white">arrow_back</span>
-        </LiquidGlass>
-        <div>
-          <h1 className="text-2xl font-black tracking-tighter text-white sm:text-3xl">
-            My Recordings
-          </h1>
-          <p className="text-xs font-medium text-white/60">
-            Saved {recordings.length}
-          </p>
-        </div>
-      </div>
+      <StickyGlassHeader
+        title="My Recordings"
+        subtitle={`Saved ${recordings.length}`}
+        icon={
+          <LiquidGlass
+            blur={10}
+            refraction={18}
+            saturation={1.6}
+            onClick={() => navigate("/karaoke")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                navigate("/karaoke");
+              }
+            }}
+            className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-white/15 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] shadow-lg shadow-black/10 transition-all hover:bg-white/25"
+          >
+            <span className="material-symbols-rounded text-xl text-white">arrow_back</span>
+          </LiquidGlass>
+        }
+      />
 
       {error && (
         <div className="flex shrink-0 items-center gap-2 rounded-2xl border border-red-400/40 bg-red-500/15 px-4 py-3 text-xs font-semibold text-red-200">

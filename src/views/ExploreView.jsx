@@ -5,6 +5,7 @@ import "material-symbols/rounded.css";
 import TrackCard from "@/components/TrackCard";
 import { getRecommendedTracks } from "@/utils/recommend";
 import { GlassIcon } from "@/components/ui/glasscn/glass-icon";
+import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
 
 function ScrollControls({ onLeft, onRight }) {
   return (
@@ -69,9 +70,10 @@ export default function ExploreView({
 
   return (
     <div className="w-full min-w-0 space-y-8 text-white select-none">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Explore</h1>
-      </div>
+      <StickyGlassHeader
+        title="Explore"
+        subtitle={userTracks.length ? `${userTracks.length} tracks • discovery` : "Discovery"}
+      />
 
       {userTracks.length === 0 ? (
         <div className="flex flex-col items-center justify-center space-y-2 py-16 text-center text-white/60">
