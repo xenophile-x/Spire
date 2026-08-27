@@ -59,9 +59,9 @@ DROP POLICY IF EXISTS "Users can read own linking codes" ON public.linking_codes
 DROP POLICY IF EXISTS "Users can delete own linking codes" ON public.linking_codes;
 REVOKE ALL ON public.linking_codes FROM anon, authenticated;
 
--- Fast lookup for bot duplicate check & redeem
+-- Fast lookup for bot duplicate check & redeem (predicate uses IMMUTABLE check; expiry filtered at query time)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_linking_codes_discord_id_active
-  ON public.linking_codes (discord_id) WHERE expires_at > now();
+  ON public.linking_codes (discord_id);
 CREATE INDEX IF NOT EXISTS idx_linking_codes_code_expires
   ON public.linking_codes (code, expires_at);
 
