@@ -16,7 +16,7 @@ function escapeDriveQuery(value) {
 
 /**
  * Get valid Google Drive access token via Supabase Edge Function
- * Auto-refreshes if expired (60s skew handled server-side)
+ * Auto-refreshes if expires within 5 min (3600s Google TTL handled server-side with 300s buffer)
  * @param {string} discordId - 17-20 digit snowflake
  * @returns {Promise<string>} access_token
  */

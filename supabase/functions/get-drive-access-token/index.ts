@@ -51,9 +51,14 @@ Deno.serve(async (req) => {
     }
 
     const expiresAt = new Date(tokenRow.expires_at).getTime();
-    if (tokenRow.access_token && Date.now() < expiresAt - 60_000) {
+    // Fix: refresh proactively if token expires within 5 min (300s) instead of 60s
+    // Google access_token is 3600s; refreshing within 3600s means we catch expiry during long playback
+    // Use 5 min buffer to avoid 3600s edge where stream starts valid but expires mid-stream
+    const REFRESH_BUFFER_MS = 5 * 60 * 1000;
+    if (tokenRow.access_token && Number.isFinite(expiresAt) && Date.now() < expiresAt - REFRESH_BUFFER_MS) {
       return new Response(JSON.stringify({ access_token: tokenRow.access_token }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    // If expires_at is null/invalid or within buffer, force refresh (also handles clock skew)
 
     const tokenRes = await fetch(GOOGLE_TOKEN_ENDPOINT, {
       method: "POST",

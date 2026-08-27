@@ -67,7 +67,9 @@ async function refreshOwnerToken(
 function isTokenExpired(tokenRow: TokenRow): boolean {
   if (!tokenRow.expires_at) return true;
   const expiresAtMs = new Date(tokenRow.expires_at).getTime();
-  return Date.now() >= expiresAtMs - 60_000;
+  // Fix 3600s edge: refresh if within 5 min of expiry (not 60s) — prevents mid-stream 401s
+  if (!Number.isFinite(expiresAtMs)) return true;
+  return Date.now() >= expiresAtMs - 5 * 60 * 1000;
 }
 
 Deno.serve(async (req) => {
