@@ -213,7 +213,7 @@ export function LibraryProvider({ children }) {
           artistBio: artistObj.bio || "",
           artistIsFavorite: !!(
             Array.isArray(artistObj.favorite_artists)
-              ? artistObj.favorite_artists.length
+              ? (artistObj.favorite_artists?.length ?? 0)
               : artistObj.favorite_artists
           ),
           genre: meta.primary_genre || meta.primaryGenre || "Unknown",
