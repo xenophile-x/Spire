@@ -157,7 +157,7 @@ export default function AppRoutes({
             isUploading={isBgUploading}
             onBackgroundUpload={onBackgroundUpload}
             bgMediaType={bgMediaType}
-            onChangeBgMediaType={handleChangeBgMediaType}
+            onChangeBgMediaType={onChangeBgMediaType}
             onSignOut={onSignOut}
             listen={listen}
             discordUser={discordUser}
