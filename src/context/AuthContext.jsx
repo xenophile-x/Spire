@@ -13,6 +13,7 @@ import {
   getGoogleAccessToken,
   clearGoogleAccessTokenCache,
 } from "@/lib/googleTokenClient";
+import { isInDiscordClient, getSdk } from "@/services/discordService";
 
 const AuthContext = createContext({});
 
@@ -126,10 +127,10 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const signInWithGoogle = async () => {
-
     const targetRedirect = typeof window !== 'undefined' ? `${window.location.origin}/` : '';
+    const inDiscord = isInDiscordClient();
 
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         scopes: "https://www.googleapis.com/auth/drive.file",
@@ -138,10 +139,23 @@ export const AuthProvider = ({ children }) => {
           prompt: "consent",
         },
         redirectTo: targetRedirect,
+        skipBrowserRedirect: inDiscord,
       },
     });
 
-    if (error) console.error("Error logging in with Google:", error.message);
+    if (error) {
+      console.error("Error logging in with Google:", error.message);
+      return;
+    }
+
+    if (inDiscord && data?.url) {
+      try {
+        const sdk = await getSdk();
+        await sdk.commands.openExternalLink({ url: data.url });
+      } catch (sdkError) {
+        console.error("Failed to open external link via Discord SDK:", sdkError);
+      }
+    }
   };
 
   const signOut = async () => {
