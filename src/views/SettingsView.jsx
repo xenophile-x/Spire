@@ -5,6 +5,7 @@ import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
 import { GlassButton } from "@/components/ui/glasscn/glass-button";
 import { useLibrary } from "@/context/LibraryContext";
 import { LibrarySharing } from "@/components/LibrarySharing";
+import { isInDiscordClient, connectDiscordOAuth, redeemLinkCode } from "@/services/discordService";
 import "material-symbols/rounded.css";
 
 function ListenTogetherCard({
@@ -20,13 +21,44 @@ function ListenTogetherCard({
   },
   discordUser,
   isDiscordConnecting,
-  discordError,
   onConnectDiscord,
+  user,
+  linkedDiscordId,
 }) {
   const [joinCode, setJoinCode] = useState("");
   const [copied, setCopied] = useState(false);
+  const [linkCode, setLinkCode] = useState("");
+  const [isLinking, setIsLinking] = useState(false);
+  const [linkMessage, setLinkMessage] = useState("");
+  const [isOAuthLinking, setIsOAuthLinking] = useState(false);
 
   const { status, roomCode, members, error, connecting, createRoom, joinRoom, leaveRoom } = listen;
+  const isDiscordLinked = Boolean(discordUser || linkedDiscordId);
+
+  const handleRedeemCode = async () => {
+    if (!linkCode.trim() || linkCode.length !== 6) return;
+    setIsLinking(true);
+    setLinkMessage("");
+    try {
+      await redeemLinkCode(linkCode.trim());
+      setLinkMessage("Discord account linked successfully!");
+      setLinkCode("");
+    } catch (err) {
+      setLinkMessage(err.message || "Invalid or expired code");
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
+  const handleOAuthConnect = async () => {
+    setIsOAuthLinking(true);
+    try {
+      await connectDiscordOAuth();
+    } catch (err) {
+      setLinkMessage(err.message || "Failed to start Discord OAuth");
+      setIsOAuthLinking(false);
+    }
+  };
 
   const handleCreateRoom = async () => {
     try {
@@ -119,6 +151,20 @@ function ListenTogetherCard({
                   <p className="text-[10px] font-medium text-emerald-300">Connected</p>
                 </div>
               </>
+            ) : linkedDiscordId ? (
+              <>
+                <LiquidGlass
+                  blur={6}
+                  refraction={8}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full [--liquid-glass-rim-light:rgba(255,255,255,0.5)]"
+                >
+                  <span className="material-symbols-rounded text-lg text-white/80">discord</span>
+                </LiquidGlass>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-white/90">Discord</p>
+                  <p className="text-[10px] font-medium text-emerald-300">Linked</p>
+                </div>
+              </>
             ) : (
               <>
                 <LiquidGlass
@@ -131,29 +177,86 @@ function ListenTogetherCard({
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-white/90">Discord</p>
                   <p className="text-[10px] font-medium text-white/50">
-                    Connect to show rich presence
+                    Link your Discord account
                   </p>
                 </div>
               </>
             )}
           </div>
-          {!discordUser && (
-            <GlassButton
-              onClick={onConnectDiscord}
-              disabled={isDiscordConnecting}
-              glassVariant="liquid-refract"
-              className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-50"
-            >
-              {isDiscordConnecting ? "Connecting..." : "Connect"}
-            </GlassButton>
-          )}
         </div>
 
-        {discordError && (
-          <div className="px-5 pb-3">
-            <p className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[10px] font-medium leading-relaxed text-amber-200">
-              {discordError}
-            </p>
+        {/* Linking methods */}
+        {!isDiscordLinked && (
+          <div className="space-y-3 px-5 py-3">
+            {/* Method 1: Discord OAuth */}
+            <GlassButton
+              onClick={handleOAuthConnect}
+              disabled={isOAuthLinking}
+              glassVariant="liquid-refract"
+              className="w-full rounded-xl py-2.5 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-50"
+            >
+              <span className="material-symbols-rounded mr-1.5 text-base leading-none">
+                link
+              </span>
+              {isOAuthLinking ? "Connecting..." : "Connect via Discord"}
+            </GlassButton>
+
+            {/* Method 3: Activity SDK (only in Discord client) */}
+            {isInDiscordClient && (
+              <GlassButton
+                onClick={onConnectDiscord}
+                disabled={isDiscordConnecting}
+                glassVariant="liquid-refract"
+                className="w-full rounded-xl py-2.5 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-50"
+              >
+                <span className="material-symbols-rounded mr-1.5 text-base leading-none">
+                  open_in_new
+                </span>
+                {isDiscordConnecting ? "Connecting..." : "Connect in Discord"}
+              </GlassButton>
+            )}
+
+            {/* Method 2: Linking code */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <LiquidGlass
+                  blur={5}
+                  refraction={5}
+                  className="flex-1 rounded-xl p-0.5 [--liquid-glass-rim-width:0.5px]"
+                >
+                  <input
+                    type="text"
+                    value={linkCode}
+                    onChange={(e) => setLinkCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onKeyDown={(e) => e.key === "Enter" && handleRedeemCode()}
+                    placeholder="6-digit link code"
+                    maxLength={6}
+                    className="w-full rounded-lg bg-transparent px-3 py-2 text-center text-xs font-semibold tracking-[0.2em] text-white outline-none placeholder-white/40"
+                  />
+                </LiquidGlass>
+                <GlassButton
+                  onClick={handleRedeemCode}
+                  disabled={isLinking || linkCode.length !== 6}
+                  glassVariant="liquid-refract"
+                  className="shrink-0 rounded-xl px-4 py-2 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-40"
+                >
+                  {isLinking ? "..." : "Link"}
+                </GlassButton>
+              </div>
+              <p className="text-[10px] font-medium text-white/40">
+                Run <span className="text-white/60">/link</span> in Discord to get a code
+              </p>
+            </div>
+
+            {linkMessage && (
+              <p className={`rounded-xl border px-3 py-2 text-[10px] font-medium leading-relaxed ${
+                linkMessage.includes("success")
+                  ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                  : "border-amber-400/20 bg-amber-400/10 text-amber-200"
+              }`}>
+                {linkMessage}
+              </p>
+            )}
           </div>
         )}
 
@@ -287,8 +390,8 @@ export default function SettingsView({
   listen,
   discordUser,
   isDiscordConnecting,
-  discordError,
   onConnectDiscord,
+  linkedDiscordId,
 }) {
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
@@ -485,8 +588,9 @@ export default function SettingsView({
           listen={listen}
           discordUser={discordUser}
           isDiscordConnecting={isDiscordConnecting}
-          discordError={discordError}
           onConnectDiscord={onConnectDiscord}
+          user={user}
+          linkedDiscordId={linkedDiscordId}
         />
 
         <div className="flex items-center justify-center gap-4 pb-2 pt-1">

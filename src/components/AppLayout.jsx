@@ -554,21 +554,22 @@ export default function AppLayout() {
 
   const [discordUser, setDiscordUser] = useState(getDiscordUser());
   const [isDiscordConnecting, setIsDiscordConnecting] = useState(false);
-  const [discordError, setDiscordError] = useState("");
+  const [linkedDiscordId, setLinkedDiscordId] = useState(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase.from("users").select("discord_id").eq("id", user.id).maybeSingle()
+      .then(({ data }) => setLinkedDiscordId(data?.discord_id || null))
+      .catch(() => {});
+  }, [user?.id]);
 
   const handleConnectDiscord = useCallback(async () => {
     setIsDiscordConnecting(true);
-    setDiscordError("");
     try {
       const me = await connectDiscord();
       setDiscordUser(me);
     } catch (err) {
       console.error("Discord connect failed:", err);
-      setDiscordError(
-        err?.code === "NOT_IN_DISCORD"
-          ? "Run Spire inside Discord (Activities) to connect. Listen Together rooms still sync playback across users."
-          : `Couldn't reach Discord: ${err?.message || "unknown error"}`
-      );
     } finally {
       setIsDiscordConnecting(false);
     }
@@ -659,8 +660,8 @@ export default function AppLayout() {
                   listen={listenTogether}
                   discordUser={discordUser}
                   isDiscordConnecting={isDiscordConnecting}
-                  discordError={discordError}
                   onConnectDiscord={handleConnectDiscord}
+                  linkedDiscordId={linkedDiscordId}
                 />
               </div>
             </TemperedGlassCard>

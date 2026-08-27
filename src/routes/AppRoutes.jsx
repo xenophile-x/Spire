@@ -25,8 +25,8 @@ export default function AppRoutes({
   listen,
   discordUser,
   isDiscordConnecting,
-  discordError,
   onConnectDiscord,
+  linkedDiscordId,
 }) {
   const { user } = useAuth();
   const {
@@ -155,13 +155,13 @@ export default function AppRoutes({
             isUploading={isBgUploading}
             onBackgroundUpload={onBackgroundUpload}
             bgMediaType={bgMediaType}
-            onChangeBgMediaType={onChangeBgMediaType}
+            onChangeBgMediaType={handleChangeBgMediaType}
             onSignOut={onSignOut}
             listen={listen}
             discordUser={discordUser}
             isDiscordConnecting={isDiscordConnecting}
-            discordError={discordError}
             onConnectDiscord={onConnectDiscord}
+            linkedDiscordId={linkedDiscordId}
           />
         }
       />

@@ -48,6 +48,7 @@ function withTimeout(promise, ms, label) {
   });
 }
 
+// Method 3: Discord Activity auto-sync
 export async function connectDiscord() {
   if (!isInDiscordClient()) {
     const err = new Error("NOT_IN_DISCORD");
@@ -91,6 +92,34 @@ export async function connectDiscord() {
   }
 
   return auth.user;
+}
+
+// Method 1: Discord OAuth2 linking
+export async function connectDiscordOAuth() {
+  const { error } = await supabase.auth.linkIdentity({
+    provider: 'discord',
+    options: {
+      redirectTo: `${window.location.origin}/settings`,
+    },
+  });
+
+  if (error) throw error;
+}
+
+// Method 2: One-time linking code redemption
+export async function redeemLinkCode(code) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    throw new Error("Not authenticated");
+  }
+
+  const res = await supabase.functions.invoke("redeem-link-code", {
+    headers: { Authorization: `Bearer ${session.access_token}` },
+    body: { code },
+  });
+
+  if (res.error) throw new Error(res.error.message || "Failed to redeem code");
+  return res.data;
 }
 
 export async function setDiscordActivity(track, isPlaying, currentTime = 0) {
