@@ -25,8 +25,12 @@ dist-ssr
 # env file and .env.local ignore
 *.env
 *.env.local
-
-#for safety 
 .env.development.local
 .env.test.local
 .env.production.local
+.vercel
+.env*
+
+# env - allow examples (must be after .env* ignore)
+!.env.example
+!bot/.env.example
