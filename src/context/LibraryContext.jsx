@@ -101,13 +101,35 @@ export function LibraryProvider({ children }) {
     });
   }, [playedTrackIds, userTracks]);
 
+  const isNetworkError = (err) => {
+    const msg = String(err?.message || err || "").toLowerCase();
+    return (
+      msg.includes("failed to fetch") ||
+      msg.includes("load failed") ||
+      msg.includes("networkerror") ||
+      msg.includes("network connection was lost") ||
+      msg.includes("failed to send a request") ||
+      msg.includes("fetch failed")
+    );
+  };
+
   const loadUserPreferences = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const [likes, userPlaylists] = await Promise.all([
+      const [likesRes, playlistsRes] = await Promise.allSettled([
         getLikedSongs(user.id),
-        getUserPlaylists(user.id)
+        getUserPlaylists(user.id),
       ]);
+      const likes = likesRes.status === "fulfilled" ? likesRes.value : new Set();
+      const userPlaylists = playlistsRes.status === "fulfilled" ? playlistsRes.value : [];
+      if (likesRes.status === "rejected") {
+        const msg = isNetworkError(likesRes.reason) ? "[Network] Liked songs fetch deferred (offline?)" : "Failed to load liked songs:";
+        (isNetworkError(likesRes.reason) ? console.warn : console.error)(msg, likesRes.reason);
+      }
+      if (playlistsRes.status === "rejected") {
+        const msg = isNetworkError(playlistsRes.reason) ? "[Network] Playlists fetch deferred (offline?)" : "Failed to load playlists:";
+        (isNetworkError(playlistsRes.reason) ? console.warn : console.error)(msg, playlistsRes.reason);
+      }
       setLikedTrackIds(likes);
 
       const favoritePlaylist = {
@@ -121,7 +143,7 @@ export function LibraryProvider({ children }) {
 
       setPlaylists([favoritePlaylist, ...userPlaylists]);
     } catch (err) {
-      console.error("Failed to load user preferences:", err);
+      (isNetworkError(err) ? console.warn : console.error)("[Library] Failed to load user preferences:", err);
     }
   }, [user?.id]);
 
@@ -130,7 +152,14 @@ export function LibraryProvider({ children }) {
     if (!user?.id) return;
     try {
       const [records, shares] = await Promise.all([
-        getUserLibrary(user.id),
+        getUserLibrary(user.id).catch((err) => {
+          if (isNetworkError(err) && typeof navigator !== "undefined" && !navigator.onLine) {
+            console.warn("[Library] User library fetch deferred — offline");
+          } else {
+            console.warn("[Library] Failed to load user library:", err);
+          }
+          throw err;
+        }),
 
 
         getAcceptedLibraryShares(user.id).catch((err) => {
@@ -237,7 +266,11 @@ export function LibraryProvider({ children }) {
       }
       setUserTracks(uniqueTracks);
     } catch (err) {
-      console.error("Failed to load library:", err);
+      if (isNetworkError(err)) {
+        console.warn("[Library] Load deferred — network unavailable, will retry when online:", err?.message || err);
+      } else {
+        console.error("Failed to load library:", err);
+      }
     } finally {
       setLibraryLoaded(true);
     }
@@ -257,7 +290,7 @@ export function LibraryProvider({ children }) {
       setListeningHistory(unique);
       setPlayedTrackIds(unique.map((h) => h.track_id));
     } catch (err) {
-      console.error("Failed to load continue listening:", err);
+      (isNetworkError(err) ? console.warn : console.error)("[Library] Failed to load continue listening:", err);
     }
   }, [user?.id]);
 
@@ -268,6 +301,16 @@ export function LibraryProvider({ children }) {
       await loadUserPreferences();
     };
     load();
+
+    // Auto-retry when the device comes back online
+    const handleOnline = () => {
+      console.info("[Library] Network restored — retrying library load");
+      load();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline);
+      return () => window.removeEventListener("online", handleOnline);
+    }
   }, [loadLibrary, loadContinueListening, loadUserPreferences]);
 
   const toggleLikeTrack = useCallback(

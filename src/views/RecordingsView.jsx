@@ -15,6 +15,7 @@ import {
 import { deleteDriveFile } from "@/services/driveService";
 import GlassSlider from "@/components/GlassSlider";
 import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
+import { AppleResizableGrid, AppleResizableTile } from "@/components/ui/AppleResize";
 
 function formatFileSize(bytes) {
   if (!bytes) return "";
@@ -296,20 +297,21 @@ export default function RecordingsView() {
         </div>
       ) : (
         <>
-          <div className="min-h-0 flex-1 grid grid-cols-1 gap-4 auto-rows-min md:grid-cols-2 xl:grid-cols-3 pb-8">
+          <AppleResizableGrid cols="grid-cols-1 md:grid-cols-2 xl:grid-cols-3" gap="gap-4" className="min-h-0 flex-1 auto-rows-min pb-8">
             {recordings.map((recording) => (
-              <RecordingCard
-                key={recording.id}
-                recording={recording}
-                isPlaying={playingId === recording.id}
-                isBusy={busyId === recording.id}
-                isDownloading={downloadingId === recording.id}
-                onTogglePlay={() => togglePlayback(recording)}
-                onDownload={() => handleDownload(recording)}
-                onDelete={() => handleDelete(recording)}
-              />
+              <AppleResizableTile key={recording.id} id={`rec-${recording.id}`} defaultSize="1x1" onRemove={() => handleDelete(recording)}>
+                <RecordingCard
+                  recording={recording}
+                  isPlaying={playingId === recording.id}
+                  isBusy={busyId === recording.id}
+                  isDownloading={downloadingId === recording.id}
+                  onTogglePlay={() => togglePlayback(recording)}
+                  onDownload={() => handleDownload(recording)}
+                  onDelete={() => handleDelete(recording)}
+                />
+              </AppleResizableTile>
             ))}
-          </div>
+          </AppleResizableGrid>
 
 
           {playingId && (

@@ -6,6 +6,7 @@ import TrackCard from "@/components/TrackCard";
 import { getRecommendedTracks } from "@/utils/recommend";
 import { GlassIcon } from "@/components/ui/glasscn/glass-icon";
 import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
+import { AppleResizableTile } from "@/components/ui/AppleResize";
 
 function ScrollControls({ onLeft, onRight }) {
   return (
@@ -101,15 +102,16 @@ export default function ExploreView({
               className="no-scrollbar flex w-full min-w-0 flex-nowrap gap-5 overflow-x-auto scroll-smooth pt-1 pb-2"
             >
                 {recommendedTracks.map((track) => (
-                <TrackCard
-                  key={`rec-${track.id}`}
-                  track={track}
-                  onPlayTrack={onPlayTrack}
-                  widthClass="w-48 sm:w-56"
-                  playlists={playlists}
-                  onAddToPlaylist={onAddToPlaylist}
-                  onDeleteTrack={onDeleteTrack}
-                />
+                <AppleResizableTile key={`rec-${track.id}`} id={`explore-rec-${track.id}`} defaultSize="1x1" className="shrink-0">
+                  <TrackCard
+                    track={track}
+                    onPlayTrack={onPlayTrack}
+                    widthClass="w-48 sm:w-56"
+                    playlists={playlists}
+                    onAddToPlaylist={onAddToPlaylist}
+                    onDeleteTrack={onDeleteTrack}
+                  />
+                </AppleResizableTile>
               ))}
             </div>
           </div>
@@ -132,15 +134,16 @@ export default function ExploreView({
                 className="no-scrollbar flex w-full min-w-0 flex-nowrap gap-5 overflow-x-auto scroll-smooth pt-1 pb-2"
               >
                 {continueListening.slice(0, 8).map((track, index) => (
-                  <TrackCard
-                    key={`continue-${track.id}-${index}`}
-                    track={track}
-                    onPlayTrack={onPlayTrack}
-                    widthClass="w-48 sm:w-56"
-                    playlists={playlists}
-                    onAddToPlaylist={onAddToPlaylist}
-                    onDeleteTrack={onDeleteTrack}
-                  />
+                  <AppleResizableTile key={`continue-${track.id}-${index}`} id={`explore-cont-${track.id}`} defaultSize="1x1" className="shrink-0">
+                    <TrackCard
+                      track={track}
+                      onPlayTrack={onPlayTrack}
+                      widthClass="w-48 sm:w-56"
+                      playlists={playlists}
+                      onAddToPlaylist={onAddToPlaylist}
+                      onDeleteTrack={onDeleteTrack}
+                    />
+                  </AppleResizableTile>
                 ))}
               </div>
             </div>

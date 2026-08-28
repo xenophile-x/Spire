@@ -54,14 +54,26 @@ async function resolveToken(fallbackToken) {
 }
 
 async function driveFetch(url, init = {}, fallbackToken) {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new Error("Offline — Drive request deferred");
+  }
   const token = await resolveToken(fallbackToken);
   if (!token) throw new Error("No Google access token available.");
 
-  const request = (t) =>
-    fetch(url, {
-      ...init,
-      headers: { ...(init.headers || {}), Authorization: `Bearer ${t}` },
-    });
+  const request = async (t) => {
+    try {
+      return await fetch(url, {
+        ...init,
+        headers: { ...(init.headers || {}), Authorization: `Bearer ${t}` },
+      });
+    } catch (err) {
+      const m = String(err?.message || err).toLowerCase();
+      if (m.includes("failed to fetch") || m.includes("network") || m.includes("load failed")) {
+        throw new Error("Network unavailable — Drive request failed");
+      }
+      throw err;
+    }
+  };
 
   let response = await request(token);
 

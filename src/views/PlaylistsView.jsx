@@ -15,6 +15,7 @@ import { GlassDropdownMenuContent } from "@/components/ui/glasscn/glass-dropdown
 import PlaylistPoster, { gradientForTitle } from "@/components/PlaylistPoster";
 import { cn } from "@/lib/utils";
 import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
+import { AppleResizableGrid, AppleResizableTile } from "@/components/ui/AppleResize";
 
 const CONTENT_WRAP_CLASS = "w-full space-y-8 pb-12";
 
@@ -773,7 +774,7 @@ export default function PlaylistsView({
         ) : (
           <>
             {userPlaylists.length > 0 && (
-              <div className="grid grid-cols-2 gap-5 pt-2 sm:grid-cols-3 lg:grid-cols-4">
+              <AppleResizableGrid cols="grid-cols-2 sm:grid-cols-3 lg:grid-cols-4" gap="gap-5" className="pt-2">
                 {userPlaylists.map((item) => {
               const isSelected = selectedIds.has(item.id);
               const posterSubtitle = isRecommendedPlaylist(item)
@@ -788,8 +789,14 @@ export default function PlaylistsView({
                 .slice(0, 8);
 
               return (
-                <div
+                <AppleResizableTile
                   key={item.id}
+                  id={`playlist-${item.id}`}
+                  defaultSize="1x1"
+                  onRemove={() => handleDeletePlaylist(item.id)}
+                  removable={!isProtectedPlaylist(item)}
+                >
+                <div
                   onClick={() => {
                     if (isSelectionMode) {
                       toggleSelection(item.id);
@@ -797,7 +804,7 @@ export default function PlaylistsView({
                       setActivePlaylistId(item.id);
                     }
                   }}
-                  className="group relative cursor-pointer"
+                  className="group relative cursor-pointer h-full"
                 >
                   {isSelectionMode && !isProtectedPlaylist(item) && (
                     <div
@@ -890,9 +897,10 @@ export default function PlaylistsView({
                     )}
                   </div>
                 </div>
+                </AppleResizableTile>
               );
               })}
-              </div>
+              </AppleResizableGrid>
             )}
 
             {genreList.length > 0 && (
@@ -901,7 +909,7 @@ export default function PlaylistsView({
                   <h2 className="text-lg font-bold tracking-tight">Browse by Genre</h2>
                   <p className="text-xs text-white/50">Mixes built from your library</p>
                 </div>
-                <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
+                <AppleResizableGrid cols="grid-cols-2 sm:grid-cols-3 lg:grid-cols-4" gap="gap-5">
                   {genreList.map((item) => {
                     const count = (item.songIds || []).length;
                     const posterArtists = (item.songIds || [])
@@ -910,14 +918,14 @@ export default function PlaylistsView({
                       .filter((a, i, arr) => arr.indexOf(a) === i)
                       .slice(0, 8);
                     return (
+                      <AppleResizableTile key={item.id} id={`genre-${item.id}`} defaultSize="1x1">
                       <div
-                        key={item.id}
                         onClick={() => {
                           if (!isSelectionMode) setActivePlaylistId(item.id);
                         }}
-                        className="group relative cursor-pointer"
+                        className="group relative cursor-pointer h-full"
                       >
-                        <div className="relative aspect-square overflow-hidden rounded-2xl bg-white/5 shadow-sm transition-all duration-300 group-hover:shadow-lg">
+                        <div className="relative aspect-square overflow-hidden rounded-2xl bg-white/5 shadow-sm transition-all duration-300 group-hover:shadow-lg h-full">
                           <PlaylistPoster
                             title={item.title}
                             subtitle={`${count} ${count === 1 ? "song" : "songs"}`}
@@ -940,9 +948,10 @@ export default function PlaylistsView({
                           )}
                         </div>
                       </div>
+                      </AppleResizableTile>
                     );
                   })}
-                </div>
+                </AppleResizableGrid>
               </div>
             )}
           </>

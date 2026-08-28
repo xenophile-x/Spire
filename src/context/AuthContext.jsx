@@ -48,7 +48,17 @@ export const AuthProvider = ({ children }) => {
   const [driveToken, setDriveToken] = useState(getDriveAccessToken());
 
 
-  const persistGoogleTokens = async (session) => {
+  const isNetworkPersistError = (err) => {
+    const msg = String(err?.message || err || "").toLowerCase();
+    return (
+      msg.includes("failed to fetch") ||
+      msg.includes("load failed") ||
+      msg.includes("network") ||
+      msg.includes("failed to send a request")
+    );
+  };
+
+  const persistGoogleTokens = async (session, attempt = 0) => {
     if (!session?.provider_token || !session?.user?.id || !session?.access_token) return;
 
     try {
@@ -66,10 +76,37 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (error) {
-        console.error("[Auth] Failed to persist Google tokens:", error);
+        if (isNetworkPersistError(error) && attempt < 2) {
+          const delay = 1000 * Math.pow(2, attempt);
+          console.warn(`[Auth] Token persist deferred (network) — retrying in ${delay}ms`);
+          setTimeout(() => persistGoogleTokens(session, attempt + 1), delay);
+        } else if (isNetworkPersistError(error)) {
+          console.warn("[Auth] Token persist skipped while offline — will retry on next sign-in/online:", error.message || error);
+          // Queue retry when online
+          const onOnline = () => {
+            window.removeEventListener("online", onOnline);
+            persistGoogleTokens(session, 0);
+          };
+          window.addEventListener("online", onOnline, { once: true });
+        } else {
+          console.warn("[Auth] Failed to persist Google tokens:", error.message || error);
+        }
       }
     } catch (err) {
-      console.error("[Auth] Failed to persist Google tokens:", err);
+      if (isNetworkPersistError(err) && attempt < 2) {
+        const delay = 1000 * Math.pow(2, attempt);
+        console.warn(`[Auth] Token persist network error — retrying in ${delay}ms`);
+        setTimeout(() => persistGoogleTokens(session, attempt + 1), delay);
+      } else if (isNetworkPersistError(err)) {
+        console.warn("[Auth] Token persist offline — queued for retry:", err.message || err);
+        const onOnline = () => {
+          window.removeEventListener("online", onOnline);
+          persistGoogleTokens(session, 0);
+        };
+        window.addEventListener("online", onOnline, { once: true });
+      } else {
+        console.warn("[Auth] Failed to persist Google tokens:", err?.message || err);
+      }
     }
   };
 
@@ -177,6 +214,11 @@ export const AuthProvider = ({ children }) => {
 
 
   const refreshGoogleToken = async () => {
+    // Don't attempt network refresh while offline
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      console.warn("[Auth] Skipping Google token refresh while offline");
+      return getDriveAccessToken() || null;
+    }
     // 1) Preferred: server-side refresh via the stored Google refresh token.
     try {
       const {
@@ -195,12 +237,20 @@ export const AuthProvider = ({ children }) => {
           setDriveToken(data.access_token);
           return data.access_token;
         }
-        console.warn("[Auth] Google token refresh failed:", error?.message || data?.error);
+        const msg = String(error?.message || data?.error || "").toLowerCase();
+        const isNet = msg.includes("failed to fetch") || msg.includes("load failed") || msg.includes("network");
+        if (isNet) {
+          console.warn("[Auth] Google token refresh deferred (offline):", error?.message || data?.error);
+        } else {
+          console.warn("[Auth] Google token refresh failed:", error?.message || data?.error);
+        }
       } else {
         console.warn("[Auth] No active Supabase session to authorize refresh call.");
       }
     } catch (err) {
-      console.error("[Auth] refreshGoogleToken threw:", err);
+      const isNet = isNetworkPersistError(err);
+      if (isNet) console.warn("[Auth] refreshGoogleToken network deferred:", err?.message || err);
+      else console.warn("[Auth] refreshGoogleToken threw:", err);
     }
 
     // 2) Fallback: silently mint a fresh short-lived token in the browser.
@@ -208,6 +258,7 @@ export const AuthProvider = ({ children }) => {
     //    token, so this is what keeps Drive uploads (and stream-track, via the
     //    server-side copy below) alive past the first hour of a session — as
     //    long as the owner's tab is open and their Google session persists.
+    if (typeof navigator !== "undefined" && !navigator.onLine) return null;
     try {
       const token = await getGoogleAccessToken();
       setDriveAccessToken(token);
@@ -223,13 +274,16 @@ export const AuthProvider = ({ children }) => {
               headers: { Authorization: `Bearer ${currentSession.access_token}` },
               body: { access_token: token, expires_in: 55 * 60 },
             })
-            .catch((err) => console.warn("[Auth] Failed to persist refreshed token:", err));
+            .catch((err) => {
+              if (isNetworkPersistError(err)) console.warn("[Auth] Persist refreshed token deferred (offline)");
+              else console.warn("[Auth] Failed to persist refreshed token:", err);
+            });
         }
       } catch {}
 
       return token;
     } catch (err) {
-      console.error("[Auth] Browser-side Google token mint failed:", err);
+      console.warn("[Auth] Browser-side Google token mint failed:", err?.message || err);
       return null;
     }
   };

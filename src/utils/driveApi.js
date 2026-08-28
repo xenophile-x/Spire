@@ -9,28 +9,50 @@ import { getGoogleAccessToken } from "@/lib/googleTokenClient";
 const TOKEN_MAX_AGE_MS = 50 * 60 * 1000;
 
 
+function isNetworkErr(e) {
+  const m = String(e?.message || e || "").toLowerCase();
+  return m.includes("failed to fetch") || m.includes("load failed") || m.includes("network") || m.includes("failed to send");
+}
+
 export async function refreshDriveAccessToken() {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    console.warn("[Drive] Refresh skipped — offline");
+    return null;
+  }
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.access_token) return null;
 
-  const { data, error } = await supabase.functions.invoke("refresh-google-token", {
-    headers: { Authorization: `Bearer ${session.access_token}` },
-  });
+  try {
+    const { data, error } = await supabase.functions.invoke("refresh-google-token", {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
 
-  if (!error && data?.access_token) {
-    setDriveAccessToken(data.access_token);
-    return data.access_token;
+    if (!error && data?.access_token) {
+      setDriveAccessToken(data.access_token);
+      return data.access_token;
+    }
+
+    // Supabase's managed Google OAuth never gives us a provider refresh token,
+    // so server-side refresh fails after the first hour. Fall back to silently
+    // minting a fresh short-lived token in-browser (works while the tab is open
+    // and the user's Google session persists), and mirror it server-side so
+    // stream-track keeps serving shared libraries.
+    if (error && isNetworkErr(error)) {
+      console.warn("[Drive] Server-side refresh deferred (offline)");
+      return null;
+    }
+    console.warn("[Drive] Server-side refresh failed:", error?.message || data?.error);
+  } catch (err) {
+    if (isNetworkErr(err)) {
+      console.warn("[Drive] Server-side refresh network deferred");
+      return null;
+    }
+    console.warn("[Drive] Server-side refresh threw:", err?.message || err);
   }
 
-  // Supabase's managed Google OAuth never gives us a provider refresh token,
-  // so server-side refresh fails after the first hour. Fall back to silently
-  // minting a fresh short-lived token in-browser (works while the tab is open
-  // and the user's Google session persists), and mirror it server-side so
-  // stream-track keeps serving shared libraries.
-  console.warn("[Drive] Server-side refresh failed:", error?.message || data?.error);
-
+  if (typeof navigator !== "undefined" && !navigator.onLine) return null;
   try {
     const token = await getGoogleAccessToken();
     setDriveAccessToken(token);
@@ -40,11 +62,14 @@ export async function refreshDriveAccessToken() {
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: { access_token: token, expires_in: 55 * 60 },
       })
-      .catch((err) => console.warn("[Drive] Failed to persist refreshed token:", err));
+      .catch((err) => {
+        if (isNetworkErr(err)) console.warn("[Drive] Persist refreshed token deferred (offline)");
+        else console.warn("[Drive] Failed to persist refreshed token:", err);
+      });
 
     return token;
   } catch (err) {
-    console.warn("[Drive] Browser-side Google token mint failed:", err);
+    console.warn("[Drive] Browser-side Google token mint failed:", err?.message || err);
     return null;
   }
 }
@@ -63,14 +88,25 @@ export async function getValidDriveToken() {
 }
 
 export const fetchDriveApi = async (endpoint, options = {}, isRetry = false) => {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new Error("Offline — Drive request deferred");
+  }
   const token = await getValidDriveToken();
   if (!token) throw new Error("Google OAuth token missing or expired.");
 
-  const response = await fetch(`https://www.googleapis.com${endpoint}`, {
-    ...options,
-    headers: { Authorization: `Bearer ${token}`, ...options.headers },
-  });
-
+  let response;
+  try {
+    response = await fetch(`https://www.googleapis.com${endpoint}`, {
+      ...options,
+      headers: { Authorization: `Bearer ${token}`, ...options.headers },
+    });
+  } catch (err) {
+    const m = String(err?.message || err).toLowerCase();
+    if (m.includes("failed to fetch") || m.includes("network") || m.includes("load failed")) {
+      throw new Error("Network unavailable — Drive request failed");
+    }
+    throw err;
+  }
 
   if (response.status === 401 && !isRetry) {
     const newToken = await refreshDriveAccessToken();

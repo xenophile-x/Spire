@@ -6,6 +6,7 @@ import { splitArtistNames } from "@/utils/artistNames";
 import { ArtistProfileImage } from "@/components/ui/MediaImages";
 import { InfiniteCarousel } from "@/components/ui/InfiniteCarousel";
 import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
+import { AppleResizableGrid, AppleResizableTile } from "@/components/ui/AppleResize";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -108,18 +109,19 @@ export default function HomeView({
               <h3 className="text-sm font-bold uppercase tracking-[0.15em] text-white/60">
                 Songs
               </h3>
-              <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4">
+              <AppleResizableGrid cols="grid-cols-2 sm:grid-cols-3 md:grid-cols-4" gap="gap-5">
                 {filteredTracks.map((track) => (
-                  <TrackCard
-                    key={`search-${track.id}`}
-                    track={track}
-                    onPlayTrack={onPlayTrack}
-                    playlists={playlists}
-                    onAddToPlaylist={onAddToPlaylist}
-                    onDeleteTrack={onDeleteTrack}
-                  />
+                  <AppleResizableTile key={`search-${track.id}`} id={`search-track-${track.id}`} defaultSize="1x1" onRemove={() => onDeleteTrack?.(track)}>
+                    <TrackCard
+                      track={track}
+                      onPlayTrack={onPlayTrack}
+                      playlists={playlists}
+                      onAddToPlaylist={onAddToPlaylist}
+                      onDeleteTrack={onDeleteTrack}
+                    />
+                  </AppleResizableTile>
                 ))}
-              </div>
+              </AppleResizableGrid>
             </div>
           )}
           {filteredArtists.length > 0 && (
@@ -131,30 +133,31 @@ export default function HomeView({
                 {filteredArtists.map((artist) => {
                   const initial = (artist.name[0] || "?").toUpperCase();
                   return (
-                    <button
-                      key={`search-artist-${artist.name}`}
-                      type="button"
-                      onClick={() =>
-                        navigate(`/artist/${encodeURIComponent(artist.name)}`)
-                      }
-                      className="group flex w-28 shrink-0 cursor-pointer flex-col items-center gap-2"
-                      aria-label={`Open ${artist.name} page`}
-                    >
-                      <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full border border-white/10 bg-gradient-to-br from-white/15 to-black/40 shadow-lg shadow-black/30 transition-transform group-hover:scale-105">
-                        <ArtistProfileImage
-                          initialSrc={artist.photo || null}
-                          artistName={artist.name}
-                          alt={artist.name}
-                          fallbackInitial={
-                            <span className="text-4xl">{initial}</span>
-                          }
-                          className="absolute left-[-12.5%] top-[-12.5%] h-[125%] w-[125%] rounded-full object-cover object-[50%_28%]"
-                        />
-                      </div>
-                      <span className="max-w-full truncate text-center text-sm font-medium text-white/70 transition-colors group-hover:text-white">
-                        {artist.name}
-                      </span>
-                    </button>
+                    <AppleResizableTile key={`search-artist-${artist.name}`} id={`search-artist-${artist.name}`} defaultSize="1x1" className="w-28">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(`/artist/${encodeURIComponent(artist.name)}`)
+                        }
+                        className="group flex w-full cursor-pointer flex-col items-center gap-2"
+                        aria-label={`Open ${artist.name} page`}
+                      >
+                        <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full border border-white/10 bg-gradient-to-br from-white/15 to-black/40 shadow-lg shadow-black/30 transition-transform group-hover:scale-105">
+                          <ArtistProfileImage
+                            initialSrc={artist.photo || null}
+                            artistName={artist.name}
+                            alt={artist.name}
+                            fallbackInitial={
+                              <span className="text-4xl">{initial}</span>
+                            }
+                            className="absolute left-[-12.5%] top-[-12.5%] h-[125%] w-[125%] rounded-full object-cover object-[50%_28%]"
+                          />
+                        </div>
+                        <span className="max-w-full truncate text-center text-sm font-medium text-white/70 transition-colors group-hover:text-white">
+                          {artist.name}
+                        </span>
+                      </button>
+                    </AppleResizableTile>
                   );
                 })}
               </div>
@@ -228,18 +231,19 @@ export default function HomeView({
 
           <div className="w-full space-y-3 pt-4">
             <h2 className="text-lg font-bold text-white">All Songs</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <AppleResizableGrid>
               {userTracks.map((track) => (
-                <TrackCard
-                  key={`grid-${track.id}`}
-                  track={track}
-                  onPlayTrack={onPlayTrack}
-                  playlists={playlists}
-                  onAddToPlaylist={onAddToPlaylist}
-                  onDeleteTrack={onDeleteTrack}
-                />
+                <AppleResizableTile key={`grid-${track.id}`} id={`track-${track.id}`} defaultSize="1x1" onRemove={() => onDeleteTrack?.(track)}>
+                  <TrackCard
+                    track={track}
+                    onPlayTrack={onPlayTrack}
+                    playlists={playlists}
+                    onAddToPlaylist={onAddToPlaylist}
+                    onDeleteTrack={onDeleteTrack}
+                  />
+                </AppleResizableTile>
               ))}
-            </div>
+            </AppleResizableGrid>
           </div>
         </>
       )}

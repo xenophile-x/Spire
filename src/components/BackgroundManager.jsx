@@ -15,9 +15,17 @@ function BackgroundLayer({ url, className, onError }) {
         muted
         playsInline
         preload="auto"
+        controls={false}
+        controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
         disablePictureInPicture
         disableRemotePlayback
-        onError={onError}
+        onError={(e) => {
+          // Suppress Safari placard errors (pip/airplay) when network is down — fallback silently
+          if (typeof navigator !== "undefined" && !navigator.onLine) {
+            e?.preventDefault?.();
+          }
+          onError?.(e);
+        }}
       />
     );
   }
