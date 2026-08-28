@@ -139,10 +139,18 @@ USING (
   )
 );
 
-CREATE POLICY "Users manage their own playlists"
-ON public.playlists FOR INSERT, UPDATE, DELETE
+CREATE POLICY "Users insert own playlists"
+ON public.playlists FOR INSERT
+WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users update own playlists"
+ON public.playlists FOR UPDATE
 USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users delete own playlists"
+ON public.playlists FOR DELETE
+USING (auth.uid() = user_id);
 
 -- 4c. user_tracks: "Users can read own library" is redundant
 DROP POLICY IF EXISTS "Users can read own library" ON public.user_tracks;
@@ -152,7 +160,7 @@ DROP POLICY IF EXISTS "Users can read own library" ON public.user_tracks;
 DROP POLICY IF EXISTS "Auth users read metadata" ON public.track_metadata;
 DROP POLICY IF EXISTS "Auth users read lyrics" ON public.track_lyrics;
 -- Note: This leaves anon-readable catalog. Intentional per audit discussion.
-
+ 
 -- 4e. library_shares: Collapse 8 policies into 4
 DROP POLICY IF EXISTS "Owners view outgoing invites" ON public.library_shares;
 DROP POLICY IF EXISTS "Owners create outgoing invites" ON public.library_shares;

@@ -2,7 +2,7 @@ import { DiscordSDK } from "@discord/embedded-app-sdk";
 import { supabase } from "@/lib/supabaseClient";
 
 const CLIENT_ID = import.meta.env.VITE_DISCORD_CLIENT_ID;
-const READY_TIMEOUT_MS = 6000;
+const READY_TIMEOUT_MS = 8000;
 
 let discordSdk = null;
 let currentUser = null;
@@ -10,78 +10,76 @@ let currentUser = null;
 export function isInDiscordClient() {
   try {
     if (typeof window === "undefined") return false;
-    // Discord Activity: iframe + discord env; fallback to iframe check
     const isIframe = Boolean(window.parent && window.parent !== window);
     const hasDiscordEnv = Boolean(
       window.location.search.includes("frame_id") ||
       window.location.search.includes("instance_id") ||
-      // @ts-ignore
       window.discordSdk ||
-      // @ts-ignore
       window.DiscordSDK
     );
-    // If explicitly inside iframe we treat as Discord; hasDiscordEnv adds confidence
-    // Do not false-positive on generic iframes: require either Discord query param or iframe + SDK
     if (hasDiscordEnv) return true;
     return isIframe && Boolean(CLIENT_ID);
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 function getSdk() {
-  if (!CLIENT_ID) {
-    const err = new Error("Missing VITE_DISCORD_CLIENT_ID in .env.local");
-    err.code = "NO_CLIENT_ID";
-    throw err;
-  }
-  if (!discordSdk) {
-    discordSdk = new DiscordSDK(CLIENT_ID);
-  }
+  if (!CLIENT_ID) throw Object.assign(new Error("Missing VITE_DISCORD_CLIENT_ID"), { code: "NO_CLIENT_ID" });
+  if (!discordSdk) discordSdk = new DiscordSDK(CLIENT_ID);
   return discordSdk;
 }
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      const err = new Error(`Timed out ${label}`);
-      err.code = "TIMEOUT";
-      reject(err);
-    }, ms);
-    promise.then(
-      (value) => {
-        window.clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        window.clearTimeout(timer);
-        reject(error);
-      }
-    );
+    const timer = setTimeout(() => reject(Object.assign(new Error(`Timed out ${label}`), { code: "TIMEOUT" })), ms);
+    promise.then(v => { clearTimeout(timer); resolve(v); }, e => { clearTimeout(timer); reject(e); });
   });
 }
 
-// Method 3: Discord Activity auto-sync — server-verified linking (no client trust)
 export async function connectDiscord() {
-  if (!isInDiscordClient()) {
-    const err = new Error("NOT_IN_DISCORD");
-    err.code = "NOT_IN_DISCORD";
-    throw err;
-  }
-
+  if (!isInDiscordClient()) throw Object.assign(new Error("NOT_IN_DISCORD"), { code: "NOT_IN_DISCORD" });
+  
   const sdk = getSdk();
   await withTimeout(sdk.ready(), READY_TIMEOUT_MS, "connecting to Discord");
 
+  // Step 1: Authorize to get OAuth2 code (required for Discord Activities)
+  const { code } = await withTimeout(
+    sdk.commands.authorize({
+      client_id: CLIENT_ID,
+      response_type: "code",
+      state: "",
+      prompt: "none",
+      scope: ["identify", "rpc.activities.write"],
+    }),
+    READY_TIMEOUT_MS,
+    "authorizing with Discord"
+  );
+
+  // Step 2: Exchange code for access token via backend (keeps client secret safe)
+  const tokenResponse = await withTimeout(
+    fetch("/.proxy/api/supabase/functions/v1/discord-token-exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    }),
+    READY_TIMEOUT_MS,
+    "exchanging Discord token"
+  );
+  if (!tokenResponse.ok) {
+    const err = await tokenResponse.json().catch(() => ({ error: "Token exchange failed" }));
+    throw new Error(err.error || `Token exchange failed: ${tokenResponse.status}`);
+  }
+  const { access_token } = await tokenResponse.json();
+
+  // Step 3: Authenticate SDK with the access token
   const auth = await withTimeout(
-    sdk.commands.authenticate(),
+    sdk.commands.authenticate({ access_token }),
     READY_TIMEOUT_MS,
     "authenticating with Discord"
   );
 
   currentUser = auth.user;
 
-  // Secure server-side linking: never trust client to write discord_id directly
-  // Calls link-discord Edge Function which verifies auth + dedupes
+  // Step 4: Link Discord ID to Supabase user (server-verified)
   if (auth.user?.id) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -90,96 +88,57 @@ export async function connectDiscord() {
           headers: { Authorization: `Bearer ${session.access_token}` },
           body: { discord_id: auth.user.id },
         });
-        if (error) {
-          // 409 = already linked elsewhere — surface but don't block Activity
-          console.warn("[Discord] link-discord failed:", error.message);
-        } else {
-          // Successfully linked — check if user has offline Drive access
-          // If not, they need to grant it for the bot to stream their library
+        if (!error) {
           const { data: { user: supabaseUser } } = await supabase.auth.getUser();
           if (supabaseUser) {
             const { data: tokenRow } = await supabase
-              .from("google_oauth_tokens")
-              .select("refresh_token")
-              .eq("user_id", supabaseUser.id)
-              .maybeSingle();
-            
-            // Signal that offline Drive access is needed (caller can prompt)
-            if (!tokenRow?.refresh_token) {
-              return { ...auth.user, needsOfflineDriveAccess: true };
-            }
+              .from("google_oauth_tokens").select("refresh_token").eq("user_id", supabaseUser.id).maybeSingle();
+            if (!tokenRow?.refresh_token) return { ...auth.user, needsOfflineDriveAccess: true };
           }
-        }
-      } else {
-        console.warn("[Discord] No Supabase session — cannot persist discord_id. User must login first.");
-      }
-    } catch (err) {
-      console.warn("[Discord] Failed to link Discord ID server-side:", err);
-    }
+        } else console.warn("[Discord] link-discord failed:", error.message);
+      } else console.warn("[Discord] No Supabase session");
+    } catch (err) { console.warn("[Discord] Failed to link:", err); }
   }
 
   try {
     await sdk.commands.setActivity({
-      activity: {
-        type: 2,
-        name: "Spire",
-        details: "Listening together",
-        state: "Ready to listen together",
-        timestamps: { start: Date.now() },
-      },
+      activity: { type: 2, name: "Spire", details: "Listening together", state: "Ready to listen together", timestamps: { start: Date.now() } },
     });
-  } catch (err) {
-    console.warn("[Discord] Failed to set initial activity:", err);
-  }
+  } catch (err) { console.warn("[Discord] Failed to set activity:", err); }
 
   return auth.user;
 }
 
-// Method 1: Discord OAuth2 linking
+// Method 1: Discord OAuth2 linking (web only — disabled in Discord client)
 export async function connectDiscordOAuth() {
+  if (isInDiscordClient()) throw Object.assign(new Error("OAuth not supported in Discord client"), { code: "NOT_IN_DISCORD" });
   const { error } = await supabase.auth.linkIdentity({
     provider: 'discord',
-    options: {
-      redirectTo: `${window.location.origin}/settings`,
-    },
+    options: { redirectTo: `${window.location.origin}/settings` },
   });
-
   if (error) throw error;
 }
 
 // Method 2: One-time linking code redemption (atomic server-side)
 export async function redeemLinkCode(code) {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) {
-    throw new Error("Not authenticated");
-  }
-
+  if (!session?.access_token) throw new Error("Not authenticated");
   const res = await supabase.functions.invoke("redeem-link-code", {
     headers: { Authorization: `Bearer ${session.access_token}` },
     body: { code },
   });
-
-  if (res.error) {
-    // Edge function returns JSON error; supabase-js wraps it in res.error.message
-    // Try to extract server message
-    const msg = res.data?.error || res.error.message || "Failed to redeem code";
-    throw new Error(msg);
-  }
+  if (res.error) throw new Error(res.data?.error || res.error.message || "Failed to redeem code");
   return res.data;
 }
 
 export async function unlinkDiscord() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) throw new Error("Not authenticated");
-  const res = await supabase.functions.invoke("unlink-discord", {
-    headers: { Authorization: `Bearer ${session.access_token}` },
-  });
+  const res = await supabase.functions.invoke("unlink-discord", { headers: { Authorization: `Bearer ${session.access_token}` } });
   if (res.error) throw new Error(res.data?.error || res.error.message || "Failed to unlink");
-  currentUser = null;
-  return res.data;
+  currentUser = null; return res.data;
 }
 
-// Helper to fetch linked discord_id for current user (used for refetch after redeem/unlink)
 export async function fetchLinkedDiscordId() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -191,35 +150,17 @@ export async function setDiscordActivity(track, isPlaying, currentTime = 0) {
   if (!discordSdk) return;
   try {
     await discordSdk.commands.setActivity({
-      activity: {
-        type: 2,
-        name: "Spire",
-        details: track?.title || "Nothing playing",
-        state: track?.artist
-          ? `${track.artist}${isPlaying ? "" : " - Paused"}`
-          : isPlaying
-            ? "Playing"
-            : "Paused",
-        timestamps: isPlaying && track ? { start: Date.now() - currentTime * 1000 } : undefined,
-      },
+      activity: { type: 2, name: "Spire", details: track?.title || "Nothing playing", state: track?.artist ? `${track.artist}${isPlaying ? "" : " - Paused"}` : isPlaying ? "Playing" : "Paused", timestamps: isPlaying && track ? { start: Date.now() - currentTime * 1000 } : undefined },
     });
-  } catch (err) {
-    console.warn("[Discord] Failed to update activity:", err);
-  }
+  } catch (err) { console.warn("[Discord] Failed to update activity:", err); }
 }
 
 export async function openExternalLink(url) {
   if (!isInDiscordClient()) return false;
   const sdk = getSdk();
   await withTimeout(sdk.ready(), READY_TIMEOUT_MS, "opening external link");
-  await sdk.commands.openExternalLink({ url });
-  return true;
+  await sdk.commands.openExternalLink({ url }); return true;
 }
 
-export function getDiscordUser() {
-  return currentUser;
-}
-
-export function isDiscordConnected() {
-  return Boolean(currentUser);
-}
+export function getDiscordUser() { return currentUser; }
+export function isDiscordConnected() { return Boolean(currentUser); }

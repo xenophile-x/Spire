@@ -1,6 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
+import { isInDiscordClient } from "@/services/discordService";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseUrl = isInDiscordClient()
+  ? "/.proxy/api/supabase"
+  : import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -39,10 +42,8 @@ async function fetchWithRetry(input, init) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const response = await fetch(input, init);
-      // Retry on transient HTTP statuses (gateway errors, rate limit)
       if (isTransientStatus(response.status) && attempt < maxRetries) {
         const delay = baseDelay * Math.pow(2, attempt);
-        // If offline, wait longer and check online status
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           await new Promise((resolve) => {
             const onOnline = () => {
@@ -50,7 +51,6 @@ async function fetchWithRetry(input, init) {
               resolve();
             };
             window.addEventListener("online", onOnline, { once: true });
-            // fallback after 5s even if still offline
             setTimeout(() => {
               window.removeEventListener("online", onOnline);
               resolve();
@@ -67,7 +67,6 @@ async function fetchWithRetry(input, init) {
       const shouldRetry = isTransientNetworkError(err) && attempt < maxRetries;
       if (!shouldRetry) throw err;
 
-      // Don't hammer retries while offline — wait for online event or backoff
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         await new Promise((resolve) => {
           const onOnline = () => {
