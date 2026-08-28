@@ -1,8 +1,11 @@
 import { runFallbackChain, withTimeout } from "../utils/fallbackRunner.ts";
 
+const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "http://localhost:5173";
+
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Vary": "Origin",
 };
 
 const json = (body: unknown, status = 200) =>
@@ -215,8 +218,13 @@ async function musicBrainzProfile(artistName: string): Promise<ProfileResult> {
 }
 
 Deno.serve(async (req) => {
+  const origin = req.headers.get("Origin");
+  const responseCors = origin && origin === ALLOWED_ORIGIN
+    ? { ...corsHeaders, "Access-Control-Allow-Origin": origin }
+    : corsHeaders;
+
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: responseCors });
   }
 
   try {

@@ -61,48 +61,15 @@ export default function SharedLibraryView() {
         .rpc("shared_library_owner", { p_token: shareToken })
         .maybeSingle();
 
-      if (!rpcError && rpcData) {
-        userData = rpcData;
-      } else {
-        const { data: legacy } = await supabase
-          .from("users")
-          .select("id, full_name, is_library_public")
-          .eq("share_token", shareToken)
-          .eq("is_library_public", true)
-          .single();
-        userData = legacy;
-      }
-
-      const userError = !userData;
-
-      if (cancelled) return;
-
-      if (userError || !userData) {
-        setError("This library is private or does not exist.");
+      if (rpcError || !rpcData) {
+        if (!cancelled) setError("This library is private or does not exist.");
         return;
       }
+      userData = rpcData;
       setOwner(userData);
 
       const { data: trackData, error: trackError } = await supabase
-        .from("shared_library_tracks")
-        .select(
-          `
-          id,
-          owner_id,
-          uploaded_filename,
-          created_at,
-          track_id,
-          canonical_title,
-          canonical_artist,
-          duration_seconds,
-          album_name,
-          artwork_url,
-          primary_genre,
-          synced_lyrics,
-          plain_lyrics
-        `
-        )
-        .eq("owner_id", userData.id);
+        .rpc("get_shared_library_tracks", { p_token: shareToken });
 
       if (cancelled) return;
 

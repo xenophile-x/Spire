@@ -1,8 +1,10 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "http://localhost:5173";
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Vary": "Origin",
 };
 
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -67,14 +69,18 @@ async function refreshOwnerToken(
 function isTokenExpired(tokenRow: TokenRow): boolean {
   if (!tokenRow.expires_at) return true;
   const expiresAtMs = new Date(tokenRow.expires_at).getTime();
-  // Fix 3600s edge: refresh if within 5 min of expiry (not 60s) — prevents mid-stream 401s
   if (!Number.isFinite(expiresAtMs)) return true;
   return Date.now() >= expiresAtMs - 5 * 60 * 1000;
 }
 
 Deno.serve(async (req) => {
+  const origin = req.headers.get("Origin");
+  const responseCors = origin && origin === ALLOWED_ORIGIN
+    ? { ...corsHeaders, "Access-Control-Allow-Origin": origin }
+    : corsHeaders;
+
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: responseCors });
   }
 
   try {
@@ -85,7 +91,7 @@ Deno.serve(async (req) => {
     if (!trackId) {
       return new Response("trackId parameter required", {
         status: 400,
-        headers: { ...corsHeaders, "Content-Type": "text/plain" },
+        headers: { ...responseCors, "Content-Type": "text/plain" },
       });
     }
 
@@ -133,7 +139,7 @@ Deno.serve(async (req) => {
     if (!track) {
       return new Response("Track not found", {
         status: 404,
-        headers: corsHeaders,
+        headers: responseCors,
       });
     }
 
@@ -141,7 +147,6 @@ Deno.serve(async (req) => {
     let authorized = Boolean(isOwner);
 
     if (!authorized && shareToken) {
-      // Preferred: owner-private token table (post phase3 migration).
       const { data: tokenRow } = await supabaseAdmin
         .from("user_share_tokens")
         .select("user_id")
@@ -157,22 +162,6 @@ Deno.serve(async (req) => {
           .is("deleted_at", null)
           .maybeSingle();
         if (publicProfile) {
-          authorized = true;
-        }
-      }
-
-      if (!authorized) {
-        // Legacy fallback (pre-migration schema). Fails harmlessly once the
-        // users.share_token column is dropped by 20260826130000.
-        const { data: ownerProfile } = await supabaseAdmin
-          .from("users")
-          .select("id")
-          .eq("id", track.user_id)
-          .eq("share_token", shareToken)
-          .eq("is_library_public", true)
-          .is("deleted_at", null)
-          .maybeSingle();
-        if (ownerProfile) {
           authorized = true;
         }
       }
@@ -194,7 +183,7 @@ Deno.serve(async (req) => {
     if (!authorized) {
       return new Response("Forbidden", {
         status: 403,
-        headers: corsHeaders,
+        headers: responseCors,
       });
     }
 
@@ -208,7 +197,7 @@ Deno.serve(async (req) => {
       console.error("No access token for user:", track.user_id);
       return new Response("No Drive token available", {
         status: 401,
-        headers: corsHeaders,
+        headers: responseCors,
       });
     }
 
@@ -221,7 +210,7 @@ Deno.serve(async (req) => {
       } else {
         return new Response("Owner's Google connection needs re-authentication", {
           status: 403,
-          headers: corsHeaders,
+          headers: responseCors,
         });
       }
     }
@@ -243,20 +232,20 @@ Deno.serve(async (req) => {
           }
         );
         if (retryRes.ok) {
-          return streamResponse(retryRes);
+          return streamResponse(retryRes, responseCors);
         }
         const retryErr = await retryRes.text();
         console.error("Drive retry failed:", retryRes.status, retryErr);
         return new Response(`Drive API error: ${retryRes.status}`, {
           status: retryRes.status,
-          headers: corsHeaders,
+          headers: responseCors,
         });
       }
       const errText = await driveRes.text();
       console.error("Drive API error and refresh unavailable:", driveRes.status, errText);
       return new Response(`Drive API error: ${driveRes.status}`, {
         status: driveRes.status,
-        headers: corsHeaders,
+        headers: responseCors,
       });
     }
 
@@ -265,25 +254,25 @@ Deno.serve(async (req) => {
       console.error("Drive API error:", driveRes.status, errText);
       return new Response(`Drive API error: ${driveRes.status}`, {
         status: driveRes.status,
-        headers: corsHeaders,
+        headers: responseCors,
       });
     }
 
-    return streamResponse(driveRes);
+    return streamResponse(driveRes, responseCors);
   } catch (err) {
     console.error("Unexpected error in stream-track:", err);
     return new Response("Internal server error", {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "text/plain" },
+      headers: { ...responseCors, "Content-Type": "text/plain" },
     });
   }
 });
 
-function streamResponse(driveRes: Response): Response {
+function streamResponse(driveRes: Response, cors: Record<string, string>): Response {
   const contentType = driveRes.headers.get("content-type") || "audio/mpeg";
   return new Response(driveRes.body, {
     headers: {
-      ...corsHeaders,
+      ...cors,
       "Content-Type": contentType,
       "Accept-Ranges": "bytes",
       "Cache-Control": "no-cache, no-store, must-revalidate",

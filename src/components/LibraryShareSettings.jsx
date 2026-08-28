@@ -69,18 +69,21 @@ export default function LibraryShareSettings({ user }) {
     if (!error && !data) {
       const { data: created } = await supabase
         .from("user_share_tokens")
-        .insert({ user_id: userId })
+        .upsert({ user_id: userId }, { onConflict: "user_id", ignoreDuplicates: true })
         .select("share_token")
-        .single();
+        .maybeSingle();
       if (created?.share_token) return created.share_token;
+      
+      // If upsert didn't return data (ignoreDuplicates), fetch it
+      const { data: existing } = await supabase
+        .from("user_share_tokens")
+        .select("share_token")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (existing?.share_token) return existing.share_token;
     }
 
-    const { data: legacy } = await supabase
-      .from("users")
-      .select("share_token")
-      .eq("id", userId)
-      .single();
-    return legacy?.share_token || "";
+    return "";
   }
 
   useEffect(() => {

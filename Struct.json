@@ -1,0 +1,648 @@
+{
+  "name": "SPire",
+  "version": "1.0.0",
+  "description": "Personal cloud music streaming application — your music, your Google Drive, your rules.",
+  "url": "https://spire-wheat-ten.vercel.app",
+  "author": "Ishan Koirala",
+
+  "motto": "Your music. Your Drive. Your rules.",
+
+  "architecture": {
+    "pattern": "Client-side SPA with serverless backend",
+    "frontend": {
+      "framework": "React 19",
+      "bundler": "Vite 8",
+      "styling": "Tailwind CSS 4 + custom Liquid Glass design system",
+      "routing": "React Router v7 (BrowserRouter)",
+      "state_management": "React Context (Auth, Player, Library, GlassVariant, AppleEdit)",
+      "ui_primitives": "Radix UI + custom glasscn component library",
+      "animation": "Framer Motion / Motion",
+      "3d_effects": "React Three Fiber + Drei (Opening animation)",
+      "icons": "Material Symbols Rounded + Lucide React",
+      "fonts": "SF Pro Display (local OTF files)"
+    },
+    "backend": {
+      "database": "Supabase (PostgreSQL 17)",
+      "authentication": "Supabase Auth (Google OAuth provider)",
+      "edge_functions": "Deno-based Supabase Edge Functions",
+      "realtime": "Supabase Realtime (Listen Together feature)",
+      "row_level_security": "RLS policies on all tables"
+    },
+    "storage": {
+      "primary": "Google Drive (user's own drive for audio files + custom backgrounds)",
+      "metadata_database": "Supabase PostgreSQL (tracks, playlists, artists, sharing)",
+      "recordings": "IndexedDB (browser-side karaoke recordings)",
+      "preferences": "localStorage (tile sizes, glass variant, session state)"
+    },
+    "integrations": [
+      "Google Drive API (file upload, streaming, quota management)",
+      "Google OAuth 2.0 (sign-in + Drive token management)",
+      "iTunes Search API (metadata matching, artwork, artist photos)",
+      "LRCLIB (synced lyrics fetching)",
+      "Wikipedia REST API (artist biographies)",
+      "Discord Embedded App SDK (in-browser activity + Rich Presence)",
+      "Discord Bot (Node.js — slash commands, voice channel streaming)",
+      "Pexels (video wallpapers)",
+      "Unsplash (image wallpapers)"
+    ],
+    "deployment": {
+      "frontend": "Vercel (continuous deployment from Git)",
+      "backend": "Supabase hosted (database + edge functions + auth)",
+      "discord_bot": "Separate Node.js process (self-hosted or cloud)"
+    }
+  },
+
+  "features": {
+    "core": {
+      "music_streaming": {
+        "description": "Stream audio directly from Google Drive via blob URL caching",
+        "how_it_works": [
+          "User uploads audio files → stored in Google Drive",
+          "Audio metadata parsed client-side (mp3, wav, flac support)",
+          "iTunes API match enriches metadata (title, artist, artwork, genre)",
+          "LRCLIB searched for synced lyrics",
+          "On play: Drive file fetched as blob → URL.createObjectURL → <audio> element",
+          "Blob URLs cached to avoid re-fetching during session",
+          "Fallback: Supabase stream-track edge function proxy when Drive quota exceeded"
+        ],
+        "supported_formats": ["mp3", "wav", "flac", "m4a", "ogg"],
+        "key_files": [
+          "src/utils/driveApi.js — Drive streaming, blob caching, token management",
+          "src/components/AudioPlayer.jsx — HTMLAudioElement wrapper",
+          "src/hooks/useAudioPlayer.js — Playback state management",
+          "src/utils/mediaResolver.js — Track audio source resolution"
+        ]
+      },
+      "library_management": {
+        "description": "Full music library with search, playlists, likes, and genre organization",
+        "data_flow": [
+          "On login: Supabase query → user_tracks + tracks + track_metadata + track_lyrics + artists",
+          "Results formatted into unified track objects with cover URLs",
+          "iTunes artwork fetched for tracks missing covers",
+          "Shared library tracks merged (isShared=true, sharedBy=owner_name)",
+          "Library stored in LibraryContext, accessible app-wide"
+        ],
+        "features": [
+          "Search by title and artist",
+          "Favorite/like songs (synced to Supabase liked_songs table)",
+          "Create/rename/delete playlists",
+          "Add/remove tracks from playlists",
+          "Genre-based auto-playlists (generated from track metadata)",
+          "Recently played / recently added smart playlists",
+          "Recommended playlist (algorithmic, refreshes every 24h)",
+          "Track deletion (removes from Supabase + Google Drive)"
+        ],
+        "key_files": [
+          "src/context/LibraryContext.jsx — Library state management",
+          "src/services/supabaseService.js — All Supabase CRUD operations",
+          "src/lib/deleteTrack.js — Track deletion with Drive cleanup"
+        ]
+      },
+      "playback_controls": {
+        "description": "Full player with shuffle, repeat, queue, and keyboard shortcuts",
+        "controls": [
+          "Play/Pause (Tab or K key)",
+          "Next/Previous track",
+          "Shuffle (random within queue)",
+          "Repeat (single track or full queue)",
+          "Volume slider",
+          "Seek bar",
+          "Expanded lyrics view"
+        ],
+        "queue_system": {
+          "description": "Context-aware queue that changes based on playback origin",
+          "queue_types": [
+            "Artist queue — all tracks by current artist, sorted by upload date",
+            "Playlist queue — tracks from active playlist",
+            "Radio queue — algorithmic recommendations based on station genre",
+            "Library queue — entire library as fallback"
+          ],
+          "preloading": "Next track's audio preloaded into memory via preloadAudio()"
+        },
+        "keyboard_shortcuts": [
+          "Tab/K — toggle play/pause",
+          "Arrow Left — seek back 10s",
+          "Arrow Right — seek forward 10s",
+          "Arrow Up — volume +5",
+          "Arrow Down — volume -5"
+        ],
+        "key_files": [
+          "src/context/PlayerContext.jsx — Global player state",
+          "src/hooks/useAudioPlayer.js — Audio element management",
+          "src/components/MusicBar.jsx — Bottom player bar UI"
+        ]
+      }
+    },
+
+    "advanced": {
+      "radio_mode": {
+        "description": "Internet radio-style playback with genre-based stations and real-time sync",
+        "stations": [
+          "Lo-Fi Hip Hop", "Pop Hits", "Rock Classics", "Hip-Hop Beats",
+          "Electronic/Dance", "Jazz Lounge", "Classical Piano", "R&B/Soul",
+          "Indie/Alternative", "Chill Vibes"
+        ],
+        "how_it_works": [
+          "User selects a station from the dropdown in MusicBar",
+          "Recommendation engine scores library tracks by genre/artist affinity",
+          "Queue built from top-scoring tracks matching station genre",
+          "Station anchor (track index + offset) persisted in localStorage",
+          "On track end: auto-advance to next track in station queue",
+          "Pause > 30s: re-tune to live position (like real radio)",
+          "Listen Together: radio state broadcast via Supabase Realtime"
+        ],
+        "key_files": [
+          "src/constants/radioStations.js — Station definitions",
+          "src/utils/recommend.js — Genre/artist recommendation scoring",
+          "src/utils/stationQueue.js — Queue building and management",
+          "src/hooks/useRadioStation.js — Station selection persistence",
+          "src/hooks/useRadioBroadcast.js — Real-time broadcast sync"
+        ]
+      },
+      "spatial_audio": {
+        "description": "Web Audio API effects: 8D binaural panning, reverb, nightcore pitch shift",
+        "effects": [
+          "8D Audio — auto-panning left/right with configurable speed",
+          "Reverb — convolution reverb with impulse response generation",
+          "Nightcore — pitch shift up + tempo increase"
+        ],
+        "implementation": "Source → GainNode → optional effects chain → destination",
+        "key_files": [
+          "src/hooks/useSpatialAudio.js — Web Audio graph construction"
+        ]
+      },
+      "karaoke": {
+        "description": "Record yourself singing along with synced lyrics display",
+        "how_it_works": [
+          "KaraokeView shows synced lyrics alongside playback controls",
+          "useMediaRecorder captures microphone audio (webm/opus)",
+          "Recordings stored in IndexedDB via recordingsStore",
+          "RecordingsView lists all saved recordings with playback/download/delete"
+        ],
+        "key_files": [
+          "src/views/KaraokeView.jsx — Karaoke recording interface",
+          "src/views/RecordingsView.jsx — Recordings management",
+          "src/hooks/useKaraokeRecorder.js — MediaRecorder logic",
+          "src/utils/recordingsStore.js — IndexedDB storage"
+        ]
+      },
+      "synced_lyrics": {
+        "description": "Time-synced lyrics that auto-follow playback position",
+        "format": "LRC (parsed by lyricsParser.js)",
+        "features": [
+          "Auto-scroll to current line",
+          "Click to seek to any line",
+          "Highlight active line with glow effect",
+          "Full-screen expanded view (swipe to dismiss)"
+        ],
+        "key_files": [
+          "src/components/SyncedLyrics.jsx — Lyrics display component",
+          "src/utils/lyricsParser.js — LRC format parser",
+          "src/views/ExpandedLyricsView.jsx — Full-screen lyrics"
+        ]
+      },
+      "library_sharing": {
+        "description": "Share your music library with friends via email invite",
+        "flow": [
+          "Owner enters grantee's email in LibrarySharing component",
+          "Invite created in library_shares table (status=pending)",
+          "Grantee sees invite notification, accepts/declines",
+          "On accept: grantee can browse owner's library in read-only mode",
+          "Shared tracks marked isShared=true (no delete controls)",
+          "Real-time updates via Supabase Realtime postgres_changes"
+        ],
+        "public_view": "/shared/:token — no auth required",
+        "key_files": [
+          "src/components/LibrarySharing.jsx — Sharing management UI",
+          "src/views/SharedLibraryView.jsx — Public shared library viewer"
+        ]
+      },
+      "discord_integration": {
+        "description": "Run SPire inside Discord as an Embedded Activity + bot for voice channels",
+        "embedded_activity": [
+          "SPire runs in Discord's embedded browser",
+          "Captures Discord user identity via SDK",
+          "Links to Supabase account via link-discord edge function",
+          "Posts Rich Presence with current track info"
+        ],
+        "discord_bot": {
+          "slash_commands": ["/play", "/pause", "/resume", "/stop", "/login", "/playlist", "/link"],
+          "voice_streaming": "Streams audio from Google Drive to Discord voice channels",
+          "account_linking": "6-digit code system via linking_codes + redeem-link-code tables"
+        },
+        "key_files": [
+          "src/services/discordService.js — Discord SDK integration",
+          "bot/index.js — Discord bot main entry",
+          "bot/driveStream.js — Drive audio streaming for bot"
+        ]
+      },
+      "background_system": {
+        "description": "Customizable video/image wallpapers with crossfade transitions",
+        "features": [
+          "35+ preset wallpapers (20 Pexels videos + 15 Unsplash images)",
+          "Custom background upload to Google Drive",
+          "Media type filter (all/video/image)",
+          "Crossfade transitions between wallpapers",
+          "Persisted in Supabase user metadata"
+        ],
+        "key_files": [
+          "src/components/BackgroundManager.jsx — Background rendering",
+          "src/components/AppLayout.jsx — Wallpaper management logic"
+        ]
+      },
+      "apple_edit_mode": {
+        "description": "iOS-style resizable grid tiles with jiggle animation (like Apple Control Center)",
+        "features": [
+          "Long-press any tile (460ms) enters edit mode",
+          "Global Edit/Done toggle button",
+          "Jiggle animation on all tiles",
+          "Minus button (top-left) to remove tiles",
+          "Curved resize handle (bottom-right) to cycle through 4 sizes",
+          "Size presets: 1x1 (Small), 2x1 (Wide), 1x2 (Tall), 2x2 (Large)",
+          "Sizes persisted in localStorage",
+          "Keyboard arrows for accessibility",
+          "Dim overlay with backdrop blur"
+        ],
+        "key_files": [
+          "src/context/AppleEditContext.jsx — Edit mode state + size persistence",
+          "src/components/ui/AppleResize.jsx — Grid container + tile component"
+        ]
+      },
+      "listen_together": {
+        "description": "Real-time playback sync across devices via Supabase Realtime",
+        "syncs": ["current track", "playing state", "current time position"],
+        "key_files": [
+          "src/hooks/useListenTogether.js — Channel subscription + broadcast"
+        ]
+      }
+    }
+  },
+
+  "data_flow": {
+    "authentication": {
+      "steps": [
+        "1. User clicks 'Continue with Google'",
+        "2. Supabase Auth redirects to Google OAuth consent screen",
+        "3. Google redirects back with auth code + provider_token (access_token)",
+        "4. AuthContext stores session, sets driveAccessToken in localStorage",
+        "5. store-google-token edge function stores refresh_token server-side",
+        "6. On subsequent loads: getSession() restores session from Supabase",
+        "7. If token stale (>50min): refresh-google-token edge function refreshes",
+        "8. Fallback: Google Identity Services mints new token in browser"
+      ]
+    },
+    "upload_pipeline": {
+      "steps": [
+        "1. User selects audio file(s) in HomeView",
+        "2. DuplicateFileDialog checks for existing files with same name",
+        "3. processAudioUpload() orchestrates the pipeline:",
+        "   a. Parse audio metadata (mp3→music-metadata-browser, wav→custom, flac→flac.js)",
+        "   b. Search iTunes API for metadata match",
+        "   c. Fetch high-res artwork from iTunes or LRCLIB",
+        "   d. Search LRCLIB for synced lyrics",
+        "   e. Upload audio file to Google Drive via driveService",
+        "   f. Register in Supabase: tracks, track_metadata, track_lyrics, user_tracks, artists",
+        "4. Track appears in library immediately (optimistic update)",
+        "5. Artist photo sync runs in background"
+      ]
+    },
+    "playback_chain": {
+      "steps": [
+        "1. User clicks track → handlePlayTrack() in PlayerContext",
+        "2. activeTrack set, isPlaying=true",
+        "3. AudioPlayer effect triggers loadAudioSource()",
+        "4. If track has driveFileId: fetch blob from Drive API",
+        "5. If Drive fetch fails (401/429): refresh token → retry",
+        "6. If still fails: try Supabase stream-track edge function",
+        "7. Blob URL created → audio.src set → audio.load()",
+        "8. Wait for 'canplay' event → apply seekTime → play()",
+        "9. onTimeUpdate fires → setCurrentTime → UI updates",
+        "10. On ended: handleTrackEnded → next track or repeat"
+      ]
+    }
+  },
+
+  "database_schema": {
+    "tables": {
+      "users": {
+        "columns": ["id", "email", "full_name", "avatar_url", "discord_id", "bg_drive_id", "wallpaper_index", "is_using_preset", "bg_media_type", "is_library_public", "created_at"],
+        "rls": "Users can read/update own profile. Library shares grantee can read owner profile."
+      },
+      "tracks": {
+        "columns": ["id", "isrc", "canonical_title", "canonical_artist", "duration_seconds", "artist_id", "drive_file_id", "created_at"],
+        "rls": "Authenticated users can read all. Inserts via edge functions.",
+        "unique_constraint": "tracks_canonical_identity_unique (canonical_title, canonical_artist)"
+      },
+      "track_metadata": {
+        "columns": ["track_id", "artwork_url", "primary_genre", "album_name", "release_year", "itunes_* fields"],
+        "rls": "Authenticated users can read/update."
+      },
+      "track_lyrics": {
+        "columns": ["track_id", "synced_lyrics", "plain_lyrics"],
+        "rls": "Authenticated users can read/update."
+      },
+      "user_tracks": {
+        "columns": ["id", "user_id", "track_id", "drive_file_id", "uploaded_filename", "created_at"],
+        "rls": "Users can read/update/delete own rows.",
+        "unique_constraint": "user_tracks_user_track_unique (user_id, track_id)"
+      },
+      "listening_history": {
+        "columns": ["id", "user_id", "track_id", "genre", "created_at"],
+        "rls": "Users can read/write own history."
+      },
+      "liked_songs": {
+        "columns": ["user_id", "track_id"],
+        "rls": "Users can read/write own likes."
+      },
+      "playlists": {
+        "columns": ["id", "user_id", "title", "description", "is_public", "gradient", "poster_style", "created_at"],
+        "rls": "Users can read/update/delete own playlists."
+      },
+      "playlist_tracks": {
+        "columns": ["playlist_id", "track_id", "position"],
+        "rls": "Users can manage own playlist tracks."
+      },
+      "artists": {
+        "columns": ["id", "name", "photo_url", "bio", "apple_music_url", "created_at"],
+        "rls": "Authenticated users can read all. Updates scoped to photo_url+bio."
+      },
+      "artist_links": {
+        "columns": ["artist_id", "track_id"],
+        "rls": "Authenticated users can read all."
+      },
+      "favorite_artists": {
+        "columns": ["user_id", "artist_id"],
+        "rls": "Users can manage own favorites."
+      },
+      "library_shares": {
+        "columns": ["id", "owner_id", "grantee_email", "grantee_id", "status", "token", "expires_at", "created_at"],
+        "rls": "Owner can CRUD. Grantee can read + accept. Public read via token."
+      },
+      "oauth_tokens": {
+        "columns": ["user_id", "access_token", "refresh_token", "scope", "token_type", "expires_at", "session_expires_at"],
+        "rls": "Locked — only service_role can access."
+      },
+      "linking_codes": {
+        "columns": ["code", "discord_id", "user_id", "expires_at"],
+        "rls": "Service role only."
+      }
+    }
+  },
+
+  "edge_functions": {
+    "store-google-token": {
+      "purpose": "Store Google OAuth refresh_token server-side (never exposed to client)",
+      "auth": "Requires valid Supabase session (Authorization header)",
+      "input": "{ access_token, refresh_token?, code?, expires_in }",
+      "output": "{ success: true }"
+    },
+    "refresh-google-token": {
+      "purpose": "Refresh Google access_token using stored refresh_token",
+      "auth": "Requires valid Supabase session",
+      "input": "None (reads refresh_token from oauth_tokens table)",
+      "output": "{ access_token, expires_at }"
+    },
+    "get-drive-access-token": {
+      "purpose": "Bot-facing: returns valid Drive access_token for a discord_id",
+      "auth": "Service role key",
+      "input": "{ discord_id }",
+      "output": "{ access_token }"
+    },
+    "link-discord": {
+      "purpose": "Link Discord user_id to Supabase user",
+      "auth": "Requires valid Supabase session",
+      "input": "{ discord_user_id }",
+      "output": "{ success: true }"
+    },
+    "unlink-discord": {
+      "purpose": "Remove discord_id from users table",
+      "auth": "Requires valid Supabase session",
+      "input": "None",
+      "output": "{ success: true }"
+    },
+    "redeem-link-code": {
+      "purpose": "Redeem 6-digit bot-generated linking code",
+      "auth": "Requires valid Supabase session",
+      "input": "{ code }",
+      "output": "{ success: true, discord_id }"
+    },
+    "fetch-artist-photo": {
+      "purpose": "Fetch artist photo from iTunes API",
+      "auth": "Authenticated",
+      "input": "{ artist_name }",
+      "output": "{ photo_url }"
+    },
+    "stream-track": {
+      "purpose": "Proxy audio stream from Google Drive (fallback when direct access fails)",
+      "auth": "Requires valid Supabase session",
+      "input": "{ drive_file_id }",
+      "output": "Audio stream (binary)"
+    },
+    "delete-track": {
+      "purpose": "Delete track from Supabase + Google Drive",
+      "auth": "Requires valid Supabase session",
+      "input": "{ user_track_id }",
+      "output": "{ success: true }"
+    }
+  },
+
+  "ui_design_system": {
+    "name": "Liquid Glass",
+    "description": "GPU-composited glassmorphism design system with CSS rim highlights",
+    "core_component": "LiquidGlass — backdrop-blur + saturate with configurable rim light",
+    "variants": ["clear", "frosted", "subtle", "liquid", "liquid-refract"],
+    "modes": ["day", "night"],
+    "components": [
+      "GlassCard, GlassCardFooter", "GlassButton", "GlassIcon",
+      "GlassDropdownMenuContent", "GlassProgress", "GlassScrimCard",
+      "GlassAlertDialogContent", "GlassContactPill", "GlassInput",
+      "GlassSelect", "GlassCheckbox", "GlassToggle", "GlassBadge",
+      "GlassCalendar", "GlassCombobox", "GlassPopover", "GlassSkeleton",
+      "GlassSidebar", "GlassSeparator", "GlassRadioGroup", "GlassToggleGroup",
+      "GlassButtonGroup", "GlassItem"
+    ],
+    "special_components": [
+      "StickyGlassHeader — Apple-style sticky header with dynamic shrink on scroll",
+      "InfiniteCarousel — Infinite scrolling with scroll position persistence",
+      "AppleResizableGrid/Tile — iOS-style resizable grid with jiggle animation",
+      "BackgroundManager — Video/image wallpaper system with crossfade",
+      "PlaylistPoster — Playlist cover art generation (Apple/Spotify variants)",
+      "TrackCard — Track tile with play overlay, playlist add, delete"
+    ]
+  },
+
+  "file_structure": {
+    "src/": {
+      "App.jsx": "Root component — screen routing (opening → landing → app)",
+      "main.jsx": "ReactDOM render with BrowserRouter, AuthProvider, GlassVariantProvider, AppleEditProvider",
+      "index.css": "Tailwind imports, custom fonts, glass utilities, scrollbar styles, squircle corners",
+      "context/": {
+        "AuthContext.jsx": "Google OAuth, session management, token refresh chain",
+        "PlayerContext.jsx": "Playback state, queue, shuffle, repeat, radio, spatial audio",
+        "LibraryContext.jsx": "Library data, playlists, likes, artist sync, genre playlists",
+        "GlassVariantContext.jsx": "Day/night mode, glass variant styles",
+        "AppleEditContext.jsx": "Apple-style edit mode, tile sizes, removed tiles"
+      },
+      "components/": {
+        "AppLayout.jsx": "Main authenticated shell (background, search, content, player, modals)",
+        "AudioPlayer.jsx": "HTMLAudioElement wrapper with Drive streaming",
+        "FloatingBar.jsx": "Desktop floating navigation (left sidebar)",
+        "MobileNav.jsx": "Mobile bottom navigation",
+        "MusicBar.jsx": "Bottom player bar with controls, volume, radio dropdown",
+        "GlassSearchBar.jsx": "Top search bar with navigation, glass style toggle",
+        "TrackCard.jsx": "Track tile with play overlay, playlist add, delete",
+        "PlaylistPoster.jsx": "Playlist cover art (Apple/Spotify variants)",
+        "SyncedLyrics.jsx": "Time-synced lyrics with auto-follow and seek",
+        "UploadModal.jsx": "Upload progress modal",
+        "QuotaAlertDialog.jsx": "Google Drive quota exceeded alert",
+        "DuplicateFileDialog.jsx": "Duplicate file upload dialog",
+        "OfflineIndicator.jsx": "Offline/reconnection status banner",
+        "BackgroundManager.jsx": "Video/image wallpaper with crossfade",
+        "EnhancedBackground.jsx": "Background effects",
+        "UltraQualityBackground.jsx": "High-quality background rendering",
+        "Opening.jsx": "3D speed lines intro animation (Three.js)",
+        "Landing.jsx": "iOS-style app grid landing page",
+        "PublicHome.jsx": "Public marketing page with sign-in",
+        "NavButton.jsx": "Navigation button component",
+        "LyricsModal.jsx": "Lyrics popup modal",
+        "GlassSlider.jsx": "Custom glass slider for seek/volume",
+        "RadioStationDropdown.jsx": "Radio station picker",
+        "LibrarySharing.jsx": "Library sharing management UI",
+        "LibraryShareSettings.jsx": "Share settings",
+        "LibrarySharingCard.jsx": "Share invite card",
+        "DeleteTrackConfirmationDialog.jsx": "Track delete confirmation",
+        "ImageWithFallback.jsx": "Image with fallback chain",
+        "artist/": {
+          "ArtistOverview.jsx": "Artist profile page (latest release, popular tracks)",
+          "ArtistWikiDetails.jsx": "Wikipedia bio display"
+        },
+        "ui/": {
+          "AppleResize.jsx": "Apple-style resizable grid + tile with jiggle",
+          "StickyGlassHeader.jsx": "Sticky header with scroll shrink",
+          "InfiniteCarousel.jsx": "Infinite scrolling carousel",
+          "MediaImages.jsx": "Track/artist images with fallback chain",
+          "TemperedGlassCard.jsx": "Tempered glass card wrapper",
+          "glasscn/": "Full glass component library (30+ components)"
+        }
+      },
+      "views/": {
+        "HomeView.jsx": "Home feed — artists carousel, recently added, all songs grid",
+        "ExploreView.jsx": "Recommended tracks + continue listening carousel",
+        "KaraokeView.jsx": "Karaoke recording studio with synced lyrics",
+        "RecordingsView.jsx": "Karaoke recordings management",
+        "PlaylistsView.jsx": "Playlist library + playlist detail view",
+        "ArtistView.jsx": "Artist profile page (overview + wiki)",
+        "SettingsView.jsx": "Account, Discord, sharing, background, display settings",
+        "ExpandedLyricsView.jsx": "Full-screen lyrics view",
+        "SharedLibraryView.jsx": "Public shared library viewer",
+        "TermsView.jsx": "Terms of Service",
+        "PrivacyView.jsx": "Privacy Policy",
+        "NotFoundView.jsx": "404 page"
+      },
+      "hooks/": {
+        "useAudioPlayer.js": "Audio element state management",
+        "useSpatialAudio.js": "Web Audio API effects (8D, reverb, nightcore)",
+        "useKaraokeRecorder.js": "MediaRecorder for karaoke",
+        "useListenTogether.js": "Real-time Supabase channel sync",
+        "useRadioStation.js": "Radio station selection persistence",
+        "useRadioBroadcast.js": "Radio state broadcast",
+        "useHomeFeed.js": "Home feed data",
+        "useImageColor.js": "Extract dominant color from images",
+        "useMetadata.js": "Track metadata fetching",
+        "use-mobile.js": "Mobile viewport detection"
+      },
+      "services/": {
+        "supabaseService.js": "All Supabase CRUD operations",
+        "uploadPipeline.js": "Upload orchestration (parse → iTunes → artwork → lyrics → Drive → Supabase)",
+        "uploadService.js": "Drive upload utilities",
+        "driveService.js": "Drive API operations (upload, delete, quota, background)",
+        "itunesService.js": "iTunes search API (metadata, artwork, artist photos)",
+        "lyricsService.js": "LRCLIB lyrics API",
+        "metadataService.js": "Cover resolution, artist photo chain",
+        "discordService.js": "Discord SDK integration (connect, activity, user detection)"
+      },
+      "utils/": {
+        "driveApi.js": "Drive streaming, blob caching, token management, quota detection",
+        "audioParser.js": "Audio metadata extraction (mp3, wav, flac)",
+        "audioSource.js": "Audio source configuration and preloading",
+        "lyricsParser.js": "LRC format parser",
+        "recommend.js": "Genre/artist recommendation scoring algorithm",
+        "formatters.js": "Time formatting, URL building, file size formatting",
+        "imageUtils.js": "Image/video URL detection, color extraction, Unsplash optimization",
+        "artistNames.js": "Artist name parsing and splitting",
+        "trackMetadata.js": "Track metadata constants (DEFAULT_COVER, etc.)",
+        "mediaResolver.js": "Track/artist image fallback resolution",
+        "recordingsStore.js": "IndexedDB storage for karaoke recordings",
+        "stationQueue.js": "Radio queue building and management",
+        "radioTimeline.js": "Radio station anchor persistence",
+        "auth.js": "Auth helper utilities (token storage, timestamps)",
+        "fetchMetadata.js": "External metadata fetching",
+        "fallbackRunner.js": "Fallback execution utilities"
+      },
+      "lib/": {
+        "supabaseClient.js": "Supabase client initialization",
+        "googleTokenClient.js": "Google Identity Services token client (browser fallback)",
+        "utils.js": "cn() utility (clsx + tailwind-merge)",
+        "glass-variants.js": "Glass variant style definitions",
+        "deleteTrack.js": "Track deletion with Drive file cleanup"
+      },
+      "constants/": {
+        "navigation.js": "NAV_ITEMS array (home, explore, karaoke, playlists, settings)",
+        "radioStations.js": "RADIO_STATIONS definitions with genres and frequencies"
+      },
+      "routes/": {
+        "AppRoutes.jsx": "React Router route definitions"
+      }
+    },
+    "supabase/": {
+      "config.toml": "Supabase project configuration",
+      "functions/": "8 Deno edge functions",
+      "migrations/": "21 SQL migration files (schema, RLS, security hardening)"
+    },
+    "bot/": {
+      "index.js": "Discord bot main entry (commands, queue, voice)",
+      "driveStream.js": "Drive audio streaming for bot",
+      "deploy-commands.js": "Slash command registration"
+    }
+  },
+
+  "deployment": {
+    "vercel": {
+      "config": "vercel.json with SPA rewrite rule",
+      "build_command": "npm run build",
+      "output_directory": "dist",
+      "environment_variables": [
+        "VITE_GOOGLE_CLIENT_ID",
+        "VITE_SUPABASE_URL",
+        "VITE_SUPABASE_ANON_KEY",
+        "VITE_DISCORD_CLIENT_ID",
+        "SUPABASE_SERVICE_ROLE_KEY (for edge functions)",
+        "GOOGLE_CLIENT_ID (for edge functions)",
+        "GOOGLE_CLIENT_SECRET (for edge functions)"
+      ]
+    },
+    "supabase": {
+      "project_ref": "dhxxmkzwubevyegvibdk",
+      "url": "https://dhxxmkzwubevyegvibdk.supabase.co",
+      "edge_functions": "Auto-deployed with supabase functions deploy"
+    }
+  },
+
+  "security": {
+    "rls": "Row-Level Security enabled on all tables",
+    "oauth_tokens": "Locked table — only service_role can read/write",
+    "session_management": "30-day absolute session lifetime, 50-min token staleness check",
+    "token_refresh": "Server-side refresh via edge functions (refresh_token never in browser)",
+    "cors": "Edge functions allow all origins (Access-Control-Allow-Origin: *)",
+    "discord_linking": "6-digit code system with expiration, one-time use"
+  },
+
+  "performance": {
+    "blob_caching": "Audio blob URLs cached in memory, revoked after 10s grace period",
+    "preloading": "Next track preloaded into memory via preloadAudio()",
+    "image_optimization": "Unsplash images served at optimal size via URL params",
+    "lazy_loading": "Track images use loading='lazy' + decoding='async'",
+    "code_splitting": "Vite automatic chunk splitting (vendor, supabase, react)",
+    "optimistic_updates": "UI updates immediately on user actions, rolls back on failure"
+  }
+}

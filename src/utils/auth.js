@@ -1,23 +1,24 @@
-const DRIVE_TOKEN_KEY = "spire_drive_access_token";
-const DRIVE_TOKEN_TIMESTAMP_KEY = "spire_drive_access_token_issued_at";
+// In-memory token storage (cleared on tab close/refresh)
+// More secure than localStorage: not accessible to XSS via localStorage API
+let memoryDriveToken = null;
+let memoryDriveTokenTimestamp = null;
 
 export function setDriveAccessToken(token) {
   if (token) {
-    localStorage.setItem(DRIVE_TOKEN_KEY, token);
-    localStorage.setItem(DRIVE_TOKEN_TIMESTAMP_KEY, String(Date.now()));
+    memoryDriveToken = token;
+    memoryDriveTokenTimestamp = Date.now();
   }
 }
 
 export function getDriveAccessToken() {
-  return localStorage.getItem(DRIVE_TOKEN_KEY);
+  return memoryDriveToken;
 }
 
 export function getDriveTokenTimestamp() {
-  const raw = localStorage.getItem(DRIVE_TOKEN_TIMESTAMP_KEY);
-  return raw ? Number(raw) : null;
+  return memoryDriveTokenTimestamp;
 }
 
 export function clearDriveAccessToken() {
-  localStorage.removeItem(DRIVE_TOKEN_KEY);
-  localStorage.removeItem(DRIVE_TOKEN_TIMESTAMP_KEY);
+  memoryDriveToken = null;
+  memoryDriveTokenTimestamp = null;
 }

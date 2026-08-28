@@ -6,12 +6,16 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "http://localhost:5173";
 
 Deno.serve(async (req) => {
+  const origin = req.headers.get("Origin");
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": origin && origin === ALLOWED_ORIGIN ? origin : ALLOWED_ORIGIN,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  };
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -24,7 +28,6 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
 
     const callerClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
@@ -50,9 +53,7 @@ Deno.serve(async (req) => {
       });
     }
 
-
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
 
     const { data: track, error: trackErr } = await adminClient
       .from("user_tracks")
@@ -74,7 +75,6 @@ Deno.serve(async (req) => {
       });
     }
 
-
     const { data: tokenData, error: tokenErr } = await adminClient
       .from("google_oauth_tokens")
       .select("*")
@@ -90,7 +90,6 @@ Deno.serve(async (req) => {
 
     let accessToken = tokenData.access_token;
     const isExpired = new Date(tokenData.expires_at) <= new Date();
-
 
     if (isExpired && tokenData.refresh_token) {
       const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -122,7 +121,6 @@ Deno.serve(async (req) => {
         .eq("user_id", user.id);
     }
 
-
     if (track.drive_file_id) {
       const driveRes = await fetch(
         `https://www.googleapis.com/drive/v3/files/${track.drive_file_id}`,
@@ -139,14 +137,12 @@ Deno.serve(async (req) => {
       }
     }
 
-
     const { error: deleteDbErr } = await adminClient
       .from("user_tracks")
       .delete()
       .eq("id", trackId);
 
     if (deleteDbErr) throw deleteDbErr;
-
 
     if (track.track_id) {
       const countRefs = async (table: string) => {

@@ -8,12 +8,16 @@ const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "http://localhost:5173";
 
 Deno.serve(async (req) => {
+  const origin = req.headers.get("Origin");
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": origin && origin === ALLOWED_ORIGIN ? origin : ALLOWED_ORIGIN,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  };
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -53,22 +57,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Keep parity with the previous client-side TTLs:
-    // access token ~55 min, session window 30 days (see one_month_token_ttl migration).
     const expiresInSec = typeof body.expires_in === "number" ? body.expires_in : 55 * 60;
     let accessToken = typeof body.access_token === "string" ? body.access_token : null;
     let expiresAt = new Date(Date.now() + expiresInSec * 1000).toISOString();
     const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Extra fields only present on the authorization-code exchange path.
     let refreshToken: string | null = null;
     let scope: string | null = null;
     let tokenType: string | null = null;
 
     if (body.code) {
-      // Authorization-code flow: swap the code for tokens server-side so the
-      // long-lived refresh_token can be stored. The client secret never
-      // leaves this function.
       if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
         return new Response(
           JSON.stringify({ error: "Google OAuth credentials not configured" }),

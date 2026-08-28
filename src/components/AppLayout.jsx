@@ -557,6 +557,7 @@ export default function AppLayout() {
   const [discordUser, setDiscordUser] = useState(getDiscordUser());
   const [isDiscordConnecting, setIsDiscordConnecting] = useState(false);
   const [linkedDiscordId, setLinkedDiscordId] = useState(null);
+  const [showOfflineDrivePrompt, setShowOfflineDrivePrompt] = useState(false);
 
   const refreshLinkedDiscordId = useCallback(async () => {
     if (!user?.id) { setLinkedDiscordId(null); return null; }
@@ -577,6 +578,12 @@ export default function AppLayout() {
       const me = await connectDiscord();
       setDiscordUser(me);
       await refreshLinkedDiscordId();
+      
+      // If Discord linking succeeded but offline Drive access is needed,
+      // show a prompt to grant it (required for bot streaming)
+      if (me?.needsOfflineDriveAccess) {
+        setShowOfflineDrivePrompt(true);
+      }
     } catch (err) {
       console.error("Discord connect failed:", err);
     } finally {
@@ -630,6 +637,24 @@ export default function AppLayout() {
             className="underline font-semibold hover:text-white/80 transition-colors"
           >
             Reconnect
+          </button>
+        </div>
+      )}
+
+      {showOfflineDrivePrompt && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[999] flex items-center gap-2 bg-emerald-500/90 text-black text-xs sm:text-sm px-4 py-2 rounded-full shadow-lg backdrop-blur-md">
+          <span>Discord linked! Grant offline Drive access so the bot can stream your library.</span>
+          <button
+            onClick={() => { navigate("/settings"); setShowOfflineDrivePrompt(false); }}
+            className="underline font-semibold hover:text-black/80 transition-colors"
+          >
+            Connect Drive
+          </button>
+          <button
+            onClick={() => setShowOfflineDrivePrompt(false)}
+            className="ml-2 text-black/70 hover:text-black"
+          >
+            ×
           </button>
         </div>
       )}

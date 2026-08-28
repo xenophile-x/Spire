@@ -93,6 +93,22 @@ export async function connectDiscord() {
         if (error) {
           // 409 = already linked elsewhere — surface but don't block Activity
           console.warn("[Discord] link-discord failed:", error.message);
+        } else {
+          // Successfully linked — check if user has offline Drive access
+          // If not, they need to grant it for the bot to stream their library
+          const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+          if (supabaseUser) {
+            const { data: tokenRow } = await supabase
+              .from("google_oauth_tokens")
+              .select("refresh_token")
+              .eq("user_id", supabaseUser.id)
+              .maybeSingle();
+            
+            // Signal that offline Drive access is needed (caller can prompt)
+            if (!tokenRow?.refresh_token) {
+              return { ...auth.user, needsOfflineDriveAccess: true };
+            }
+          }
         }
       } else {
         console.warn("[Discord] No Supabase session — cannot persist discord_id. User must login first.");
