@@ -47,6 +47,84 @@ const queueMap = new Map();
 const linkRateLimit = new Map();
 const VOICE_EXEMPT_COMMANDS = new Set(['stop', 'login', 'link', 'launch']);
 
+// Auto-disconnect when voice channel empty for too long
+const EMPTY_CHANNEL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const emptyChannelTimers = new Map(); // guildId -> Timeout
+
+function cancelEmptyChannelDisconnect(guildId) {
+  const timer = emptyChannelTimers.get(guildId);
+  if (timer) {
+    clearTimeout(timer);
+    emptyChannelTimers.delete(guildId);
+    console.log(`[Auto-Disconnect] Cancelled empty-channel timer for guild ${guildId}`);
+  }
+}
+
+function scheduleEmptyChannelDisconnect(guildId) {
+  if (emptyChannelTimers.has(guildId)) return; // already scheduled
+  console.log(`[Auto-Disconnect] Voice channel empty — scheduling leave in ${EMPTY_CHANNEL_TIMEOUT_MS / 60000} min for guild ${guildId}`);
+  const timer = setTimeout(async () => {
+    emptyChannelTimers.delete(guildId);
+    const connection = getVoiceConnection(guildId);
+    if (!connection) return;
+    try {
+      const guild = client.guilds.cache.get(guildId);
+      if (guild) {
+        const channelId = connection.joinConfig?.channelId;
+        const channel = channelId ? (guild.channels.cache.get(channelId) || await guild.channels.fetch(channelId).catch(() => null)) : null;
+        if (channel && channel.isVoiceBased()) {
+          const humanCount = channel.members.filter(m => !m.user.bot).size;
+          if (humanCount > 0) {
+            console.log(`[Auto-Disconnect] Cancelled — users rejoined in guild ${guildId}`);
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Auto-Disconnect] Re-check failed, proceeding to disconnect:', e.message);
+    }
+    console.log(`[Auto-Disconnect] Leaving voice channel (empty for 5 min) — guild ${guildId}`);
+    const queue = queueMap.get(guildId);
+    if (queue) {
+      try { queue.player.stop(true); } catch {}
+      queue.tracks = [];
+      queue.current = null;
+      queue.playing = false;
+    }
+    try { connection.destroy(); } catch {}
+  }, EMPTY_CHANNEL_TIMEOUT_MS);
+  // Allow Node to exit even if timer is pending (Render/health checks)
+  if (timer.unref) timer.unref();
+  emptyChannelTimers.set(guildId, timer);
+}
+
+async function handleEmptyChannelState(guildId) {
+  const connection = getVoiceConnection(guildId);
+  if (!connection) {
+    cancelEmptyChannelDisconnect(guildId);
+    return;
+  }
+  try {
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return;
+    const channelId = connection.joinConfig?.channelId;
+    if (!channelId) return;
+    const channel = guild.channels.cache.get(channelId) || await guild.channels.fetch(channelId).catch(() => null);
+    if (!channel || !channel.isVoiceBased()) {
+      cancelEmptyChannelDisconnect(guildId);
+      return;
+    }
+    const humanCount = channel.members.filter(m => !m.user.bot).size;
+    if (humanCount === 0) {
+      scheduleEmptyChannelDisconnect(guildId);
+    } else {
+      cancelEmptyChannelDisconnect(guildId);
+    }
+  } catch (err) {
+    console.error('[Auto-Disconnect] handleEmptyChannelState error:', err.message);
+  }
+}
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://spire-wheat-ten.vercel.app';
@@ -142,7 +220,44 @@ async function playNext(guildId, connection) {
 // 4. Client Event Listeners
 client.once('clientReady', () => {
   console.log(`[Discord Bot] Logged in as ${client.user.tag}`);
-}); 
+});
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  const guildId = oldState.guild?.id || newState.guild?.id;
+  if (!guildId) return;
+
+  // Bot itself left / was disconnected / moved — clean up or re-evaluate
+  if (newState.member?.id === client.user.id || oldState.member?.id === client.user.id) {
+    if (!newState.channelId) {
+      // Bot left voice entirely
+      cancelEmptyChannelDisconnect(guildId);
+      const q = queueMap.get(guildId);
+      if (q) {
+        q.tracks = [];
+        q.current = null;
+        q.playing = false;
+        try { q.player.stop(true); } catch {}
+      }
+      console.log(`[Auto-Disconnect] Bot disconnected from voice — cleared queue for guild ${guildId}`);
+      return;
+    }
+    // Bot moved channels — re-evaluate emptiness of new channel
+    if (newState.channelId !== oldState.channelId) {
+      cancelEmptyChannelDisconnect(guildId);
+      await handleEmptyChannelState(guildId);
+      return;
+    }
+  }
+
+  // Any member join/leave/mute in the bot's channel — check if channel is now empty
+  const connection = getVoiceConnection(guildId);
+  if (!connection) return;
+  const botChannelId = connection.joinConfig?.channelId;
+  // Only care if the update is for the bot's current voice channel
+  if (oldState.channelId !== botChannelId && newState.channelId !== botChannelId) return;
+  await handleEmptyChannelState(guildId);
+});
+
 client.on('interactionCreate', async interaction => {
   const discordId = interaction.user.id;
 
@@ -190,6 +305,12 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: '❌ You must be connected to a voice channel to use this command.', flags: MessageFlags.Ephemeral });
   }
 
+  // Defer immediately for commands that stream audio to avoid the 3-second Discord timeout.
+  // Voice connection (joinVoiceChannel + entersState) can take 4-10s, so we must acknowledge first.
+  if ((commandName === 'play' || commandName === 'playlist') && !interaction.deferred && !interaction.replied) {
+    await interaction.deferReply();
+  }
+
   let connection = getVoiceConnection(guildId);
   if (!connection && voiceChannel) {
     connection = joinVoiceChannel({
@@ -201,9 +322,17 @@ client.on('interactionCreate', async interaction => {
 
     try {
       await ensureVoiceConnection(connection);
+      // Bot is now in a channel with at least the requester — ensure empty-channel timer is cleared
+      cancelEmptyChannelDisconnect(guildId);
     } catch (err) {
-      return interaction.reply({ content: '❌ Failed to establish voice channel connection.', flags: MessageFlags.Ephemeral });
+      const errorMsg = '❌ Failed to establish voice channel connection.';
+      return interaction.deferred
+        ? interaction.editReply(errorMsg)
+        : interaction.reply({ content: errorMsg, flags: MessageFlags.Ephemeral });
     }
+  } else if (connection) {
+    // Already connected — re-evaluate empty state (e.g. user rejoined before command)
+    cancelEmptyChannelDisconnect(guildId);
   }
 
   const queue = getQueue(guildId);
@@ -273,14 +402,19 @@ client.on('interactionCreate', async interaction => {
 
   // Command: /stop
   if (commandName === 'stop') {
+    cancelEmptyChannelDisconnect(guildId);
     if (connection) {
-      queue.player.stop();
+      queue.player.stop(true);
       queue.tracks = [];
       queue.current = null;
       queue.playing = false;
-      connection.destroy();
+      try { connection.destroy(); } catch {}
       await interaction.reply('⏹️ Stopped playback, cleared queue, and left the voice channel.');
     } else {
+      // Also clear queue even if not connected (stale state)
+      queue.tracks = [];
+      queue.current = null;
+      queue.playing = false;
       await interaction.reply({ content: 'Not connected to a voice channel.', flags: MessageFlags.Ephemeral });
     }
     return;
