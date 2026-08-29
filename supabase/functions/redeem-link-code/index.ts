@@ -4,6 +4,17 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "http://localhost:5173";
+const ALLOWED_ORIGINS = [ALLOWED_ORIGIN, "https://discord.com", "https://discordapp.com"];
+
+function getCorsHeaders(origin: string | null) {
+  const allowed = ALLOWED_ORIGINS.includes(origin || "") ? origin : ALLOWED_ORIGIN;
+  return {
+    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
+}
 
 const attempts = new Map<string, { count: number; resetAt: number }>();
 function checkRateLimit(userId: string): boolean {
@@ -20,12 +31,7 @@ function checkRateLimit(userId: string): boolean {
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": origin && origin === ALLOWED_ORIGIN ? origin : ALLOWED_ORIGIN,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Vary": "Origin",
-  };
+  const corsHeaders = getCorsHeaders(origin);
 
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {

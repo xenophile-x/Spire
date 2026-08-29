@@ -3,6 +3,14 @@
     {
       "source": "/(.*)",
       "destination": "/index.html"
+    },
+    {
+      "source": "/.proxy/api/supabase/(.*)",
+      "destination": "https://${SUPABASE_PROJECT_REF}.supabase.co/$2"
+    },
+    {
+      "source": "/.proxy/api/supabase/functions/v1/(.*)",
+      "destination": "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/$1"
     }
   ]
 }
