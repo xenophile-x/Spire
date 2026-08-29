@@ -305,25 +305,20 @@ client.on('interactionCreate', async interaction => {
 
   // Command: /link
   if (commandName === 'link') {
-    const now = Date.now();
-    const lastRequest = linkRateLimit.get(discordId);
-    
-    // Removed numeric separator (30_000 -> 30000)
-    if (lastRequest && now - lastRequest < 30000) {
-      const waitSeconds = Math.ceil((30000 - (now - lastRequest)) / 1000);
-      return interaction.reply({ content: `⏳ Please wait ${waitSeconds}s before generating another verification code.`, flags: MessageFlags.Ephemeral });
-    }
-
-    // Correct flow: defer first, then edit — never reply + defer in same handling
-    // Guard: if interaction already acknowledged above line 301 (e.g. missing return, voice guard, rate-limit),
-    // do NOT defer again — use editReply/followUp. This prevents "Interaction already replied" crash.
-    if (interaction.deferred || interaction.replied) {
-      // Already acknowledged — continue to logic and use editReply
-    } else {
+    // 1. Acknowledge Discord INSTANTLY (prevents 3s "application did not respond" timeout)
+    // Must be before any Supabase/network I/O. If already acknowledged (edge case), skip.
+    if (!interaction.deferred && !interaction.replied) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     }
 
     try {
+      // Rate-limit check AFTER defer — use editReply since already deferred
+      const now = Date.now();
+      const lastRequest = linkRateLimit.get(discordId);
+      if (lastRequest && now - lastRequest < 30000) {
+        const waitSeconds = Math.ceil((30000 - (now - lastRequest)) / 1000);
+        return interaction.editReply(`⏳ Please wait ${waitSeconds}s before generating another verification code.`);
+      }
       const checkRes = await fetch(`${SUPABASE_URL}/rest/v1/users?discord_id=eq.${discordId}&select=id`, {
         headers: {
           'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -380,14 +375,12 @@ client.on('interactionCreate', async interaction => {
       const cleanUrl = WEB_APP_URL.replace(/^https?:\/\//, '');
       return interaction.editReply(`Your verification code is **\`${code}\`**.\n\nIt will expire in 5 minutes. Enter this code on **${cleanUrl}/settings** under the Discord section.`);
     } catch (err) {
-      console.error("Supabase Insert Error:", err); // <--- ADD THIS LINE: prints exact Supabase rejection to Render terminal
+      console.error("Supabase Insert Error:", err);
       console.error('[Link Command Error]:', err?.message || err, err?.stack || '');
-      if (interaction.deferred || interaction.replied) {
-        return interaction.editReply('❌ An error occurred while generating your verification code.');
-      }
-      return interaction.reply({ content: '❌ An error occurred while generating your verification code.', flags: MessageFlags.Ephemeral });
+      // Already deferred at top, so always editReply (never reply/deferReply again)
+      return interaction.editReply('❌ Failed to generate unique code. Please check server logs.');
     }
-    return;
+    // No extra return needed — editReply already returned in all branches
   }
 
   // Command: /playlist
