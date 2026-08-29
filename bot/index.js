@@ -305,14 +305,20 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: '❌ You must be connected to a voice channel to use this command.', flags: MessageFlags.Ephemeral });
   }
 
-  // Defer immediately for commands that stream audio to avoid the 3-second Discord timeout.
-  // Voice connection (joinVoiceChannel + entersState) can take 4-10s, so we must acknowledge first.
-  if ((commandName === 'play' || commandName === 'playlist') && !interaction.deferred && !interaction.replied) {
-    await interaction.deferReply();
+  // Defer BEFORE any blocking work. Voice join (entersState 15s) and Supabase (cold start)
+  // will both exceed Discord's 3s acknowledgement window if we await them first.
+  // /link must also defer before voice check, otherwise `ensureVoiceConnection` blocks `deferReply` at 444.
+  if ((commandName === 'play' || commandName === 'playlist' || commandName === 'link') && !interaction.deferred && !interaction.replied) {
+    await interaction.deferReply(commandName === 'link' ? { flags: MessageFlags.Ephemeral } : undefined);
   }
 
   let connection = getVoiceConnection(guildId);
-  if (!connection && voiceChannel) {
+  // VOICE_EXEMPT commands (link/login/stop/launch) must NEVER block on voice join.
+  // Previous bug: /link with user in voice still did `await ensureVoiceConnection` (4-15s)
+  // before reaching `deferReply` at 444 -> Discord timeout -> "application did not respond"
+  // + log "Failed to establish voice channel connection" seen in your screenshot.
+  const needsVoice = !VOICE_EXEMPT_COMMANDS.has(commandName);
+  if (needsVoice && !connection && voiceChannel) {
     connection = joinVoiceChannel({
       channelId: voiceChannel.id,
       guildId,
@@ -330,9 +336,12 @@ client.on('interactionCreate', async interaction => {
         ? interaction.editReply(errorMsg)
         : interaction.reply({ content: errorMsg, flags: MessageFlags.Ephemeral });
     }
-  } else if (connection) {
+  } else if (connection && needsVoice) {
     // Already connected — re-evaluate empty state (e.g. user rejoined before command)
     cancelEmptyChannelDisconnect(guildId);
+  } else if (!needsVoice) {
+    // For exempt commands, just read existing connection for /stop use, don't join/create
+    // connection already fetched via getVoiceConnection above
   }
 
   const queue = getQueue(guildId);
@@ -439,9 +448,11 @@ client.on('interactionCreate', async interaction => {
 
   // Command: /link
   if (commandName === 'link') {
-    // 1. Acknowledge Discord INSTANTLY (takes 0.1s, prevents 3s timeout → gives 15m window)
-    // MUST be very first line before any DB/code generation (Render cold start = 5-10s for first command)
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    // Already deferred at bot/index.js:310 before voice block to avoid "did not respond".
+    // Keep guard for direct invocation / tests.
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    }
 
     try {
       // 2. NOW do heavy lifting AFTER defer (rate-limit, Supabase ops, code gen)
