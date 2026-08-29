@@ -364,10 +364,15 @@ client.on('interactionCreate', async interaction => {
         if (insertRes.ok) {
           inserted = true;
           break;
+        } else {
+          // Expose hidden Supabase rejection reason to Render logs
+          const insertErr = await insertRes.text().catch(() => '');
+          console.error("Supabase Insert Error:", `attempt ${attempt + 1}/5`, `status ${insertRes.status}`, insertErr || '(empty body)', { code, discord_id: discordId });
         }
       }
 
       if (!inserted || !code) {
+        console.error("Supabase Insert Error:", 'all 5 insert attempts failed — check Render logs above for status/body, verify SUPABASE_SERVICE_ROLE_KEY and linking_codes RLS/service_role grant');
         return interaction.editReply('❌ Failed to generate unique code. Please try again.');
       }
 
@@ -375,7 +380,8 @@ client.on('interactionCreate', async interaction => {
       const cleanUrl = WEB_APP_URL.replace(/^https?:\/\//, '');
       return interaction.editReply(`Your verification code is **\`${code}\`**.\n\nIt will expire in 5 minutes. Enter this code on **${cleanUrl}/settings** under the Discord section.`);
     } catch (err) {
-      console.error('[Link Command Error]:', err.message);
+      console.error("Supabase Insert Error:", err); // <--- ADD THIS LINE: prints exact Supabase rejection to Render terminal
+      console.error('[Link Command Error]:', err?.message || err, err?.stack || '');
       if (interaction.deferred || interaction.replied) {
         return interaction.editReply('❌ An error occurred while generating your verification code.');
       }
