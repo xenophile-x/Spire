@@ -211,7 +211,10 @@ client.on('interactionCreate', async interaction => {
   // Command: /play
   if (commandName === 'play') {
     const fileId = interaction.options.getString('query');
-    await interaction.deferReply();
+    // Guard: defer only if not already acknowledged (prevents double deferReply crash)
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply();
+    }
 
     try {
       const accessToken = await getValidAccessToken(discordId);
@@ -227,11 +230,21 @@ client.on('interactionCreate', async interaction => {
         await playNext(guildId, connection);
       }
 
-      await interaction.editReply(`🎶 Added to queue: **${fileData.name}**`);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(`🎶 Added to queue: **${fileData.name}**`);
+      } else {
+        await interaction.reply(`🎶 Added to queue: **${fileData.name}**`);
+      }
     } catch (err) {
       console.error('[Play Error]:', err.message);
-      await interaction.editReply('❌ Could not stream track. Connect your Google Drive account in SPire Web App settings first.');
+      const msg = '❌ Could not stream track. Connect your Google Drive account in SPire Web App settings first.';
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(msg);
+      } else {
+        await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+      }
     }
+    return;
   }
 
   // Command: /pause
@@ -243,6 +256,7 @@ client.on('interactionCreate', async interaction => {
     } else {
       await interaction.reply({ content: 'Nothing is currently playing.', flags: MessageFlags.Ephemeral });
     }
+    return;
   }
 
   // Command: /resume
@@ -254,6 +268,7 @@ client.on('interactionCreate', async interaction => {
     } else {
       await interaction.reply({ content: 'No paused track to resume.', flags: MessageFlags.Ephemeral });
     }
+    return;
   }
 
   // Command: /stop
@@ -268,6 +283,7 @@ client.on('interactionCreate', async interaction => {
     } else {
       await interaction.reply({ content: 'Not connected to a voice channel.', flags: MessageFlags.Ephemeral });
     }
+    return;
   }
 
   // Command: /login
@@ -284,6 +300,7 @@ client.on('interactionCreate', async interaction => {
       components: [row],
       flags: MessageFlags.Ephemeral
     });
+    return;
   }
 
   // Command: /link
@@ -298,7 +315,13 @@ client.on('interactionCreate', async interaction => {
     }
 
     // Correct flow: defer first, then edit — never reply + defer in same handling
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    // Guard: if interaction already acknowledged above line 301 (e.g. missing return, voice guard, rate-limit),
+    // do NOT defer again — use editReply/followUp. This prevents "Interaction already replied" crash.
+    if (interaction.deferred || interaction.replied) {
+      // Already acknowledged — continue to logic and use editReply
+    } else {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    }
 
     try {
       const checkRes = await fetch(`${SUPABASE_URL}/rest/v1/users?discord_id=eq.${discordId}&select=id`, {
@@ -358,12 +381,15 @@ client.on('interactionCreate', async interaction => {
       }
       return interaction.reply({ content: '❌ An error occurred while generating your verification code.', flags: MessageFlags.Ephemeral });
     }
+    return;
   }
 
   // Command: /playlist
   if (commandName === 'playlist') {
     const folderId = interaction.options.getString('name');
-    await interaction.deferReply();
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply();
+    }
 
     try {
       const accessToken = await getValidAccessToken(discordId);
@@ -387,11 +413,21 @@ client.on('interactionCreate', async interaction => {
         await playNext(guildId, connection);
       }
 
-      await interaction.editReply(`music Added **${tracks.length} tracks** from **"${folderData.name}"** folder to queue.`);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(`music Added **${tracks.length} tracks** from **"${folderData.name}"** folder to queue.`);
+      } else {
+        await interaction.reply(`music Added **${tracks.length} tracks** from **"${folderData.name}"** folder to queue.`);
+      }
     } catch (err) {
       console.error('[Playlist Error]:', err.message);
-      await interaction.editReply(' Failed to load playlist. Connect your Google Drive in SPire Web App settings first.');
+      const msg = ' Failed to load playlist. Connect your Google Drive in SPire Web App settings first.';
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(msg);
+      } else {
+        await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+      }
     }
+    return;
   }
 });
 
