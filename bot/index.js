@@ -305,14 +305,12 @@ client.on('interactionCreate', async interaction => {
 
   // Command: /link
   if (commandName === 'link') {
-    // 1. Acknowledge Discord INSTANTLY (prevents 3s "application did not respond" timeout)
-    // Must be before any Supabase/network I/O. If already acknowledged (edge case), skip.
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    }
+    // 1. Acknowledge Discord INSTANTLY (takes 0.1s, prevents 3s timeout → gives 15m window)
+    // MUST be very first line before any DB/code generation (Render cold start = 5-10s for first command)
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-      // Rate-limit check AFTER defer — use editReply since already deferred
+      // 2. NOW do heavy lifting AFTER defer (rate-limit, Supabase ops, code gen)
       const now = Date.now();
       const lastRequest = linkRateLimit.get(discordId);
       if (lastRequest && now - lastRequest < 30000) {
