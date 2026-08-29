@@ -138,14 +138,22 @@ function getQueue(guildId) {
 
     player.on(AudioPlayerStatus.Idle, async () => {
       const queue = queueMap.get(guildId);
-      if (queue && queue.tracks.length > 0) {
-        const connection = getVoiceConnection(guildId);
-        if (connection) {
-          await playNext(guildId, connection);
+      try {
+        if (queue && queue.tracks.length > 0) {
+          const connection = getVoiceConnection(guildId);
+          if (connection) {
+            await playNext(guildId, connection);
+          }
+        } else if (queue) {
+          queue.playing = false;
+          queue.current = null;
         }
-      } else if (queue) {
-        queue.playing = false;
-        queue.current = null;
+      } catch (e) {
+        console.error(`[Audio Player Idle Error] Guild ${guildId}:`, e.message);
+        if (queue) {
+          queue.playing = false;
+          queue.current = null;
+        }
       }
     });
 
@@ -330,7 +338,8 @@ client.on('interactionCreate', async interaction => {
       await ensureVoiceConnection(connection);
       // Bot is now in a channel with at least the requester — ensure empty-channel timer is cleared
       cancelEmptyChannelDisconnect(guildId);
-    } catch (err) {
+    } catch (_err) {
+      console.error('[Voice Error] Failed to establish connection:', _err);
       const errorMsg = '❌ Failed to establish voice channel connection.';
       return interaction.deferred
         ? interaction.editReply(errorMsg)
@@ -473,19 +482,11 @@ client.on('interactionCreate', async interaction => {
         return interaction.editReply('✅ Your Discord account is already linked to SPire.');
       }
 
-      await fetch(`${SUPABASE_URL}/rest/v1/linking_codes?discord_id=eq.${discordId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          'apikey': SUPABASE_SERVICE_ROLE_KEY
-        }
-      });
-
       let code = null;
       let inserted = false;
 
       for (let attempt = 0; attempt < 5; attempt++) {
-        code = Math.floor(100000 + Math.random() * 900000).toString();
+        code = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
         const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/linking_codes`, {
@@ -503,20 +504,28 @@ client.on('interactionCreate', async interaction => {
           inserted = true;
           break;
         } else {
-          // Expose hidden Supabase rejection reason to Render logs
           const insertErr = await insertRes.text().catch(() => '');
-          console.error("Supabase Insert Error:", `attempt ${attempt + 1}/5`, `status ${insertRes.status}`, insertErr || '(empty body)', { code, discord_id: discordId });
+          console.error("Supabase Insert Error:", `attempt ${attempt + 1}/5`, `status ${insertRes.status}`, insertErr || '(empty body)');
         }
       }
 
       if (!inserted || !code) {
-        console.error("Supabase Insert Error:", 'all 5 insert attempts failed — check Render logs above for status/body, verify SUPABASE_SERVICE_ROLE_KEY and linking_codes RLS/service_role grant');
+        console.error("Supabase Insert Error:", 'all 5 insert attempts failed — verify SUPABASE_SERVICE_ROLE_KEY and linking_codes RLS/service_role grant');
         return interaction.editReply('❌ Failed to generate unique code. Please try again.');
       }
 
+      // Delete old codes ONLY after successful insert, so user always has a valid code
+      await fetch(`${SUPABASE_URL}/rest/v1/linking_codes?discord_id=eq.${discordId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'apikey': SUPABASE_SERVICE_ROLE_KEY
+        }
+      }).catch(() => {});
+
       linkRateLimit.set(discordId, Date.now());
       const cleanUrl = WEB_APP_URL.replace(/^https?:\/\//, '');
-      return interaction.editReply(`Your verification code is **\`${code}\`**.\n\nIt will expire in 5 minutes. Enter this code on **${cleanUrl}/settings** under the Discord section.`);
+      return interaction.editReply(`Your verification code is **\`${code}\`**.\n\nIt will expire in 5 minutes. Enter this code on **${cleanUrl}/settings** under the Discord section.`, { flags: MessageFlags.Ephemeral });
     } catch (err) {
       console.error("Supabase Insert Error:", err);
       console.error('[Link Command Error]:', err?.message || err, err?.stack || '');

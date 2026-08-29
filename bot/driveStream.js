@@ -4,7 +4,8 @@ const ffmpegPath = require('ffmpeg-static');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const BOT_SECRET = process.env.BOT_SECRET || process.env.DISCORD_BOT_TOKEN;
+const BOT_SECRET = process.env.BOT_SECRET;
+if (!BOT_SECRET) throw new Error('BOT_SECRET is required. Do not fall back to DISCORD_BOT_TOKEN.');
 
 /**
  * Escapes query parameters for Google Drive API queries.
