@@ -5,7 +5,8 @@ const {
   GatewayIntentBits,
   ButtonBuilder,
   ButtonStyle,
-  ActionRowBuilder
+  ActionRowBuilder,
+  MessageFlags
 } = require('discord.js');
 const {
   joinVoiceChannel,
@@ -186,7 +187,7 @@ client.on('interactionCreate', async interaction => {
   const voiceChannel = member?.voice?.channel;
 
   if (!voiceChannel && !VOICE_EXEMPT_COMMANDS.has(commandName)) {
-    return interaction.reply({ content: '❌ You must be connected to a voice channel to use this command.', ephemeral: true });
+    return interaction.reply({ content: '❌ You must be connected to a voice channel to use this command.', flags: MessageFlags.Ephemeral });
   }
 
   let connection = getVoiceConnection(guildId);
@@ -201,7 +202,7 @@ client.on('interactionCreate', async interaction => {
     try {
       await ensureVoiceConnection(connection);
     } catch (err) {
-      return interaction.reply({ content: '❌ Failed to establish voice channel connection.', ephemeral: true });
+      return interaction.reply({ content: '❌ Failed to establish voice channel connection.', flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -240,7 +241,7 @@ client.on('interactionCreate', async interaction => {
       queue.playing = false;
       await interaction.reply('⏸️ Playback paused.');
     } else {
-      await interaction.reply({ content: 'Nothing is currently playing.', ephemeral: true });
+      await interaction.reply({ content: 'Nothing is currently playing.', flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -251,7 +252,7 @@ client.on('interactionCreate', async interaction => {
       queue.playing = true;
       await interaction.reply('▶️ Playback resumed.');
     } else {
-      await interaction.reply({ content: 'No paused track to resume.', ephemeral: true });
+      await interaction.reply({ content: 'No paused track to resume.', flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -265,7 +266,7 @@ client.on('interactionCreate', async interaction => {
       connection.destroy();
       await interaction.reply('⏹️ Stopped playback, cleared queue, and left the voice channel.');
     } else {
-      await interaction.reply({ content: 'Not connected to a voice channel.', ephemeral: true });
+      await interaction.reply({ content: 'Not connected to a voice channel.', flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -281,7 +282,7 @@ client.on('interactionCreate', async interaction => {
     await interaction.reply({
       content: 'Click below to connect your Google Drive account to SPire:',
       components: [row],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -293,10 +294,11 @@ client.on('interactionCreate', async interaction => {
     // Removed numeric separator (30_000 -> 30000)
     if (lastRequest && now - lastRequest < 30000) {
       const waitSeconds = Math.ceil((30000 - (now - lastRequest)) / 1000);
-      return interaction.reply({ content: `⏳ Please wait ${waitSeconds}s before generating another verification code.`, ephemeral: true });
+      return interaction.reply({ content: `⏳ Please wait ${waitSeconds}s before generating another verification code.`, flags: MessageFlags.Ephemeral });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    // Correct flow: defer first, then edit — never reply + defer in same handling
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
       const checkRes = await fetch(`${SUPABASE_URL}/rest/v1/users?discord_id=eq.${discordId}&select=id`, {
@@ -351,7 +353,10 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply(`Your verification code is **\`${code}\`**.\n\nIt will expire in 5 minutes. Enter this code on **${cleanUrl}/settings** under the Discord section.`);
     } catch (err) {
       console.error('[Link Command Error]:', err.message);
-      return interaction.editReply('❌ An error occurred while generating your verification code.');
+      if (interaction.deferred || interaction.replied) {
+        return interaction.editReply('❌ An error occurred while generating your verification code.');
+      }
+      return interaction.reply({ content: '❌ An error occurred while generating your verification code.', flags: MessageFlags.Ephemeral });
     }
   }
 
