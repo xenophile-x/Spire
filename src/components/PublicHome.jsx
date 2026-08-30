@@ -26,8 +26,8 @@ export default function PublicHome({ onEnterExperience }) {
           synced lyrics, record karaoke, explore radio stations, and share your library with friends.
         </p>
 
-        {/* Single primary CTA as you asked: only Enter the experience */}
-        <div className="mt-8 flex flex-col items-center gap-3">
+        {/* Primary CTA: Enter the experience */}
+        <div className="mt-8 flex flex-col items-center gap-4">
           {onEnterExperience && (
             <button
               onClick={onEnterExperience}
@@ -36,13 +36,13 @@ export default function PublicHome({ onEnterExperience }) {
               Enter the experience
             </button>
           )}
-          {/* Secondary — tiny text link so Google sign-in is still discoverable without cluttering hero */}
+          {/* Secondary CTA: Continue with Google - prominent button */}
           <button
             onClick={signInWithGoogle}
-            className="text-xs text-white/40 hover:text-white/80 transition-colors flex items-center gap-1.5"
+            className="w-full max-w-xs rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-8 py-3 text-sm font-medium text-white hover:bg-white/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
           >
-            <GoogleIcon className="h-3.5 w-3.5 opacity-60" />
-            or Continue with Google
+            <GoogleIcon className="h-5 w-5" />
+            Continue with Google
           </button>
         </div>
 

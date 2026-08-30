@@ -6,8 +6,8 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
 
   useEffect(() => {
     const openglColors = [
-      "#333333", "#00b2ff", "#13e6a3", "#00e650",
-      "#ffe600", "#ff5500", "#FF0000", "#8e00fe", "#ff007f"
+      "#00d4ff", "#00ff88", "#00ff44", "#ffee00",
+      "#ff8800", "#ff0000", "#bb00ff", "#ff00aa", "#333333"
     ];
 
     const bars = [];
@@ -261,13 +261,13 @@ export default function Opening({ onComplete }) {
 
   return (
     <div
-      className="relative h-screen w-screen bg-[#ffffff] font-sans overflow-hidden select-none cursor-pointer flex items-center justify-center"
+      className="relative h-screen w-screen bg-black font-sans overflow-hidden select-none cursor-pointer flex items-center justify-center"
       onClick={handleBackgroundClick}
     >
       <SpeedLinesCanvas progress={burstProgress} lineCount={72} />
 
       <div
-        className={`absolute inset-0 z-50 flex items-center justify-center bg-white transition-opacity duration-500 ${
+        className={`absolute inset-0 z-50 flex items-center justify-center bg-black/80 transition-opacity duration-500 ${
           hasStarted ? "opacity-0 pointer-events-none" : "opacity-100"
         }`}
       >
@@ -276,7 +276,7 @@ export default function Opening({ onComplete }) {
             e.stopPropagation();
             startSequence();
           }}
-          className="px-8 py-3 bg-white text-gray-500 font-medium tracking-wide rounded-full border border-gray-200 shadow-sm transition-all duration-300 ease-out hover:scale-105 hover:shadow-md hover:text-gray-800 focus:outline-none"
+          className="px-8 py-3 bg-white/10 text-white/80 font-medium tracking-wide rounded-full border border-white/20 shadow-sm transition-all duration-300 ease-out hover:scale-105 hover:shadow-md hover:bg-white/20 hover:text-white focus:outline-none backdrop-blur-sm"
         >
           Press Enter to continue
         </button>
