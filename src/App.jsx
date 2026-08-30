@@ -259,7 +259,7 @@ export default function App() {
     return (
       <>
         <OfflineIndicator />
-        <Landing onLaunchSpire={() => handleScreenChange("app")} />
+        <Landing onLaunchSpire={() => handleScreenChange("app")} onSignIn={signInWithGoogle} />
       </>
     );
   }
