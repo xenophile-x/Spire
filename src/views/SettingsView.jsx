@@ -41,11 +41,12 @@ function ListenTogetherCard({
   const isDiscordLinked = Boolean(discordUser || linkedDiscordId);
 
   const handleRedeemCode = async () => {
-    if (!linkCode.trim() || linkCode.length !== 6) return;
+    const normalized = linkCode.trim().toUpperCase();
+    if (!normalized || !/^[A-Z0-9]{6,8}$/.test(normalized)) return;
     setIsLinking(true);
     setLinkMessage("");
     try {
-      const res = await redeemLinkCode(linkCode.trim());
+      const res = await redeemLinkCode(normalized);
       setLinkMessage("Discord account linked successfully!");
       setLinkCode("");
       // Refetch linkedDiscordId without hard refresh (Phase 3 UX)
@@ -254,16 +255,16 @@ function ListenTogetherCard({
                   <input
                     type="text"
                     value={linkCode}
-                    onChange={(e) => setLinkCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onChange={(e) => setLinkCode(e.target.value.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 8))}
                     onKeyDown={(e) => e.key === "Enter" && handleRedeemCode()}
-                    placeholder="6-digit link code"
-                    maxLength={6}
+                    placeholder="8-character code (e.g. 57F2D895)"
+                    maxLength={8}
                     className="w-full rounded-lg bg-transparent px-3 py-2 text-center text-xs font-semibold tracking-[0.2em] text-white outline-none placeholder-white/40"
                   />
                 </LiquidGlass>
                 <GlassButton
                   onClick={handleRedeemCode}
-                  disabled={isLinking || linkCode.length !== 6}
+                  disabled={isLinking || !/^[A-Z0-9]{6,8}$/.test(linkCode.trim().toUpperCase())}
                   glassVariant="liquid-refract"
                   className="shrink-0 rounded-xl px-4 py-2 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-40"
                 >

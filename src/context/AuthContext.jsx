@@ -20,11 +20,14 @@ const persistGoogleTokens = async (session) => {
   }
 };
 
+const CANONICAL_SITE_URL = "https://spire-wheat-ten.vercel.app";
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [driveToken, setDriveToken] = useState(getDriveAccessToken());
+  const signInInProgressRef = React.useRef(false);
 
   useEffect(() => {
     supabase.auth
@@ -75,22 +78,45 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const signInWithGoogle = async () => {
-    const targetRedirect = typeof window !== "undefined" ? `${window.location.origin}/` : "";
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        scopes: "https://www.googleapis.com/auth/drive.file",
-        queryParams: {
-          access_type: "offline",
-          prompt: "consent",
-        },
-        redirectTo: targetRedirect,
-      },
-    });
+    if (signInInProgressRef.current) return;
+    signInInProgressRef.current = true;
+    try {
+      // Use canonical prod URL for Vercel previews so redirectTo always
+      // matches Supabase allow-list (dynamic preview origins are not
+      // allow-listed — Supabase would fallback to Site URL and the PKCE
+      // code_verifier stored for the preview origin would be lost,
+      // surfacing as "Unable to exchange external code: 4/0A").
+      // Local dev keeps its own origin so http://localhost:5173/* works.
+      const isLocal =
+        typeof window !== "undefined" &&
+        (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+      const targetRedirect = isLocal
+        ? `${window.location.origin}/`
+        : `${CANONICAL_SITE_URL}/`;
 
-    if (error) {
-      console.error("Error logging in with Google:", error.message);
-      return;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          scopes: "https://www.googleapis.com/auth/drive.file",
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
+          redirectTo: targetRedirect,
+        },
+      });
+
+      if (error) {
+        console.error("Error logging in with Google:", error.message);
+        signInInProgressRef.current = false;
+        return;
+      }
+      // Let the browser navigate away — do not reset the guard until
+      // the page unloads, prevents double-click from creating two PKCE
+      // verifiers and invalidating the first code (4/0A).
+    } catch (err) {
+      console.error("Error logging in with Google:", err);
+      signInInProgressRef.current = false;
     }
   };
 

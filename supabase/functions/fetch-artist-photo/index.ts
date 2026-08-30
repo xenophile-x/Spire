@@ -1,7 +1,21 @@
 import { runFallbackChain, withTimeout } from "../utils/fallbackRunner.ts";
 
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "http://localhost:5173";
-
+const ALLOWED_ORIGINS = [
+  ALLOWED_ORIGIN,
+  "https://spire-wheat-ten.vercel.app",
+  "https://spire-hazel.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+function getCorsHeaders(origin: string | null) {
+  const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGIN;
+  return {
+    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  };
+}
 const corsHeaders = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -97,7 +111,7 @@ async function wikipediaProfile(artistName: string): Promise<ProfileResult> {
       if ((err as Error)?.name !== "AbortError") {
         console.error("wikipedia profile error:", err);
       }
-      throw err;
+      return null;
     }
     return null;
   }, DEFAULT_PROVIDER_TIMEOUT_MS);
@@ -142,7 +156,7 @@ async function itunesProfile(artistName: string): Promise<ProfileResult> {
       if ((err as Error)?.name !== "AbortError") {
         console.error("itunes profile error:", err);
       }
-      throw err;
+      return null;
     }
     return null;
   }, DEFAULT_PROVIDER_TIMEOUT_MS);
@@ -164,8 +178,9 @@ async function deezerProfile(artistName: string): Promise<ProfileResult> {
       if ((err as Error)?.name !== "AbortError") {
         console.error("deezer profile error:", err);
       }
-      throw err;
+      return null;
     }
+    return null;
   }, DEFAULT_PROVIDER_TIMEOUT_MS);
 }
 
@@ -212,29 +227,34 @@ async function musicBrainzProfile(artistName: string): Promise<ProfileResult> {
       if ((err as Error)?.name !== "AbortError") {
         console.error("musicbrainz profile error:", err);
       }
-      throw err;
+      return null;
     }
+    return null;
   }, MUSICBRAINZ_TIMEOUT_MS);
 }
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
-  const responseCors = origin && origin === ALLOWED_ORIGIN
-    ? { ...corsHeaders, "Access-Control-Allow-Origin": origin }
-    : corsHeaders;
+  const responseCors = getCorsHeaders(origin);
 
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: responseCors });
   }
 
   try {
-    const { artistName } = await req.json();
+    const { artistName } = await req.json().catch(() => ({}));
     if (!artistName || typeof artistName !== "string") {
       return json({ error: "Missing artistName" }, 400);
     }
 
     // Wikipedia first: it owns the bio, and its lead image is preferred.
-    const wiki = await wikipediaProfile(artistName);
+    // Wrap so a 404/timeout never becomes 500 — return empty and let fallbacks handle it.
+    let wiki: ProfileResult = null;
+    try {
+      wiki = await wikipediaProfile(artistName);
+    } catch {
+      wiki = null;
+    }
     let photoUrl = wiki?.photo_url || "";
 
     // Wiki article exists but has no usable image — let the other

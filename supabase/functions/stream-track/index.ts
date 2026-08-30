@@ -1,9 +1,26 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "http://localhost:5173";
+const ALLOWED_ORIGINS = [
+  ALLOWED_ORIGIN,
+  "https://spire-wheat-ten.vercel.app",
+  "https://spire-hazel.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+function getCorsHeaders(origin: string | null) {
+  const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGIN;
+  return {
+    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, range",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin",
+  };
+}
 const corsHeaders = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, range",
   "Vary": "Origin",
 };
 
@@ -75,19 +92,10 @@ function isTokenExpired(tokenRow: TokenRow): boolean {
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
-  const responseCors = origin && origin === ALLOWED_ORIGIN
-    ? { ...corsHeaders, "Access-Control-Allow-Origin": origin }
-    : corsHeaders;
+  const responseCors = getCorsHeaders(origin);
 
   if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: {
-        ...responseCors,
-        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, range",
-        "Access-Control-Max-Age": "86400",
-      },
-    });
+    return new Response("ok", { headers: responseCors });
   }
 
   try {
@@ -108,7 +116,16 @@ Deno.serve(async (req) => {
     );
 
     let requester: { id: string; email: string | null } | null = null;
-    const authHeader = req.headers.get("Authorization");
+    // Audio element can't send Authorization header, so also accept ?token= JWT
+    // (appended by getStreamTrackUrl) or ?apikey=. The sb_publishable_ prefix is
+    // the anon publishable key — not a user JWT — ignore it like the header case.
+    let authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      const tokenParam = url.searchParams.get("token") || url.searchParams.get("access_token") || url.searchParams.get("apikey") || "";
+      if (tokenParam && !tokenParam.startsWith("sb_") && tokenParam.split(".").length === 3) {
+        authHeader = `Bearer ${tokenParam}`;
+      }
+    }
     if (authHeader && !authHeader.startsWith("Bearer sb_")) {
       const supabaseAuth = createClient(
         Deno.env.get("SUPABASE_URL")!,

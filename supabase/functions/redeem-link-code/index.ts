@@ -42,10 +42,11 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const rawCode = body?.code;
-    if (!rawCode || typeof rawCode !== "string" || !/^\d{6}$/.test(rawCode.trim())) {
-      return new Response(JSON.stringify({ error: "Invalid code format. Must be 6 digits." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const normalized = typeof rawCode === "string" ? rawCode.trim().toUpperCase() : "";
+    if (!normalized || !/^[A-Z0-9]{6,8}$/.test(normalized)) {
+      return new Response(JSON.stringify({ error: "Invalid code format. Must be 6-8 alphanumeric characters." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const code = rawCode.trim();
+    const code = normalized;
 
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
     const { data: { user }, error: authError } = await userClient.auth.getUser();

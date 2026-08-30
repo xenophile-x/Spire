@@ -35,6 +35,21 @@ function sleep(ms) {
 }
 
 async function fetchWithRetry(input, init) {
+  // PKCE code exchange is single-use — never retry auth endpoints or we
+  // burn the code and Supabase wraps the second attempt as
+  // "Unable to exchange external code: 4/0A...".
+  const rawUrl =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : typeof input?.url === "string"
+          ? input.url
+          : "";
+  if (rawUrl.includes("/auth/v1/")) {
+    return fetch(input, init);
+  }
+
   const maxRetries = 3;
   const baseDelay = 500;
 

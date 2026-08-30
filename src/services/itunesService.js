@@ -144,29 +144,9 @@ export async function fetchArtistPhoto(artistName) {
   }
 
 
-  // entity=musicArtist returns no artwork — search songs instead and use
-  // the top result's album art as the artist photo proxy.
-  try {
-    const response = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(
-        artistName.trim()
-      )}&media=music&entity=song&limit=1`
-    );
-
-    if (!response.ok) {
-      throw new Error(`iTunes API responded with status ${response.status}`);
-    }
-
-    const data = await response.json();
-    const match = data.results && data.results[0];
-
-    if (match?.artworkUrl100) {
-      return match.artworkUrl100.replace("100x100bb", "600x600bb");
-    }
-  } catch (error) {
-    console.warn(`[iTunes] No artist photo for "${artistName}":`, error);
-  }
-
+  // Browser direct iTunes fetch is blocked by CORS (No ACAO) — the edge
+  // function already tried iTunes server-side. Skip client fetch entirely
+  // and fall back to Wikipedia only.
 
   const wikiPhoto = await fetchWikipediaPhoto(artistName);
   if (wikiPhoto) return wikiPhoto;
@@ -194,28 +174,7 @@ export async function fetchArtistProfile(artistName) {
     console.warn(`[Artist] Profile fetch failed for "${artistName}":`, err);
   }
 
-  // Wikipedia/edge function had nothing — fall back to iTunes.
-  // entity=musicArtist returns no artwork, so search the artist's songs
-  // and use the top result's album art as the photo proxy.
-  try {
-    const response = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(
-        artistName.trim()
-      )}&media=music&entity=song&limit=1`
-    );
-    if (response.ok) {
-      const data = await response.json();
-      const match = data.results && data.results[0];
-      const photo = match?.artworkUrl100
-        ? match.artworkUrl100.replace("100x100bb", "600x600bb")
-        : "";
-      if (photo) {
-        return { photo_url: photo, bio: "" };
-      }
-    }
-  } catch (err) {
-    console.warn(`[iTunes] Artist fallback failed for "${artistName}":`, err);
-  }
-
+  // Browser iTunes fallback removed — CORS blocked. Edge function
+  // already tried iTunes server-side, so just return empty.
   return { photo_url: "", bio: "" };
 }

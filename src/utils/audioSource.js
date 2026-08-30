@@ -82,12 +82,20 @@ export async function getAudioObjectUrl(driveId) {
 export async function getStreamTrackUrl(driveId) {
   if (!driveId) throw new Error("Missing Drive file id");
 
-  const cached = streamUrlCache.get(driveId);
+  // Audio element GET can't send Authorization header, so embed the
+  // Supabase JWT as ?token= — stream-track reads it as fallback.
+  const { accessToken } = await resolveTokens();
+  const baseUrl = getStreamUrl(driveId);
+  const url = accessToken ? `${baseUrl}&token=${encodeURIComponent(accessToken)}` : baseUrl;
+
+  const cacheKey = driveId + (accessToken ? `:${accessToken.slice(-8)}` : "");
+  const cached = streamUrlCache.get(cacheKey);
   if (cached) return cached;
 
-  const url = getStreamUrl(driveId);
-  streamUrlCache.set(driveId, url);
-  while (streamUrlCache.size > CACHE_LIMIT) {
+  streamUrlCache.set(cacheKey, url);
+  // Also keep base key for preload dedupe
+  if (!streamUrlCache.has(driveId)) streamUrlCache.set(driveId, url);
+  while (streamUrlCache.size > CACHE_LIMIT * 2) {
     const oldestKey = streamUrlCache.keys().next().value;
     streamUrlCache.delete(oldestKey);
   }
