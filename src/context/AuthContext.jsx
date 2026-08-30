@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { setDriveAccessToken, clearDriveAccessToken } from "@/utils/auth";
+import { getDriveAccessToken, setDriveAccessToken, clearDriveAccessToken } from "@/utils/auth";
 
 const AuthContext = createContext({});
 
