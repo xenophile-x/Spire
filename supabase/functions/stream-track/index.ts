@@ -80,7 +80,14 @@ Deno.serve(async (req) => {
     : corsHeaders;
 
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: responseCors });
+    return new Response("ok", {
+      headers: {
+        ...responseCors,
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, range",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
   }
 
   try {
@@ -215,21 +222,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    const clientRange = req.headers.get("Range");
+    const driveHeaders: Record<string, string> = { Authorization: `Bearer ${accessToken}` };
+    if (clientRange) driveHeaders["Range"] = clientRange;
+
     const driveRes = await fetch(
       `https://www.googleapis.com/drive/v3/files/${track.drive_file_id}?alt=media`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
+      { headers: driveHeaders }
     );
 
     if (driveRes.status === 401 || driveRes.status === 403) {
       const refreshed = await refreshOwnerToken(supabaseAdmin, track.user_id, tokenData as TokenRow);
       if (refreshed) {
+        const retryHeaders: Record<string, string> = { Authorization: `Bearer ${refreshed}` };
+        if (clientRange) retryHeaders["Range"] = clientRange;
         const retryRes = await fetch(
           `https://www.googleapis.com/drive/v3/files/${track.drive_file_id}?alt=media`,
-          {
-            headers: { Authorization: `Bearer ${refreshed}` },
-          }
+          { headers: retryHeaders }
         );
         if (retryRes.ok) {
           return streamResponse(retryRes, responseCors);
@@ -270,14 +279,18 @@ Deno.serve(async (req) => {
 
 function streamResponse(driveRes: Response, cors: Record<string, string>): Response {
   const contentType = driveRes.headers.get("content-type") || "audio/mpeg";
-  return new Response(driveRes.body, {
-    headers: {
-      ...cors,
-      "Content-Type": contentType,
-      "Accept-Ranges": "bytes",
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      Pragma: "no-cache",
-      Expires: "0",
-    },
-  });
+  const contentLength = driveRes.headers.get("content-length");
+  const acceptRanges = driveRes.headers.get("accept-ranges") || "bytes";
+  const contentRange = driveRes.headers.get("content-range");
+
+  const headers: Record<string, string> = {
+    ...cors,
+    "Content-Type": contentType,
+    "Accept-Ranges": acceptRanges,
+    "Cache-Control": "public, max-age=3600, immutable",
+  };
+  if (contentLength) headers["Content-Length"] = contentLength;
+  if (contentRange) headers["Content-Range"] = contentRange;
+
+  return new Response(driveRes.body, { headers });
 }

@@ -155,7 +155,7 @@ export default function App() {
   // If user is already authenticated (session persisted), skip the marketing
   // funnel — go straight to app. Fixes "after login pushes me back to login".
   React.useEffect(() => {
-    if (!authLoading && authUser && location.pathname === "/" && currentScreen !== "app" && !SHARE_ROUTE_RE.test(location.pathname)) {
+    if (!authLoading && authUser && currentScreen !== "app" && !SHARE_ROUTE_RE.test(location.pathname)) {
       sessionStorage.setItem("spire_screen", "app");
       setCurrentScreen("app");
     }
@@ -209,7 +209,6 @@ export default function App() {
         </div>
       );
     }
-    if (authUser) return null; // effect will switch to "app"
     return (
       <>
         <OfflineIndicator />

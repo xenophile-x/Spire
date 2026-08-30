@@ -367,9 +367,6 @@ export default function AppLayout() {
         } else if (choice === "cancel") {
           return;
         } else if (choice === "replace") {
-
-
-          files = files.filter((f) => duplicates.includes(f));
           replaceNames = new Set(duplicates.map((f) => f.name));
         }
       }

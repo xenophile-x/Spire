@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabaseClient";
 
 const CACHE_LIMIT = 10;
-const urlCache = new Map();
+const streamUrlCache = new Map();
+const blobUrlCache = new Map();
 const inflight = new Map();
 
 async function resolveTokens() {
@@ -16,6 +17,12 @@ async function resolveTokens() {
   } catch {
     return { googleToken: "", accessToken: "" };
   }
+}
+
+function getStreamUrl(driveId) {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl) throw new Error("VITE_SUPABASE_URL not set");
+  return `${supabaseUrl}/functions/v1/stream-track?trackId=${encodeURIComponent(driveId)}`;
 }
 
 async function fetchDriveBlob(driveId) {
@@ -36,16 +43,9 @@ async function fetchDriveBlob(driveId) {
     }
   }
 
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!supabaseUrl) throw new Error("VITE_SUPABASE_URL not set");
-  const headers = {};
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  if (supabaseAnonKey) headers.apikey = supabaseAnonKey;
-  const response = await fetch(
-    `${supabaseUrl}/functions/v1/stream-track?trackId=${encodeURIComponent(driveId)}`,
-    { headers }
-  );
+  const response = await fetch(getStreamUrl(driveId), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
   return await response.blob();
 }
@@ -53,12 +53,8 @@ async function fetchDriveBlob(driveId) {
 export async function getAudioObjectUrl(driveId) {
   if (!driveId) throw new Error("Missing Drive file id");
 
-  const cached = urlCache.get(driveId);
-  if (cached) {
-    urlCache.delete(driveId);
-    urlCache.set(driveId, cached);
-    return cached;
-  }
+  const cached = blobUrlCache.get(driveId);
+  if (cached) return cached;
 
   const pending = inflight.get(driveId);
   if (pending) return pending;
@@ -66,11 +62,11 @@ export async function getAudioObjectUrl(driveId) {
   const promise = fetchDriveBlob(driveId)
     .then((blob) => {
       const url = URL.createObjectURL(blob);
-      urlCache.set(driveId, url);
-      while (urlCache.size > CACHE_LIMIT) {
-        const oldestKey = urlCache.keys().next().value;
-        const oldestUrl = urlCache.get(oldestKey);
-        urlCache.delete(oldestKey);
+      blobUrlCache.set(driveId, url);
+      while (blobUrlCache.size > CACHE_LIMIT) {
+        const oldestKey = blobUrlCache.keys().next().value;
+        const oldestUrl = blobUrlCache.get(oldestKey);
+        blobUrlCache.delete(oldestKey);
         URL.revokeObjectURL(oldestUrl);
       }
       return url;
@@ -83,7 +79,31 @@ export async function getAudioObjectUrl(driveId) {
   return promise;
 }
 
+export async function getStreamTrackUrl(driveId) {
+  if (!driveId) throw new Error("Missing Drive file id");
+
+  const cached = streamUrlCache.get(driveId);
+  if (cached) return cached;
+
+  const url = getStreamUrl(driveId);
+  streamUrlCache.set(driveId, url);
+  while (streamUrlCache.size > CACHE_LIMIT) {
+    const oldestKey = streamUrlCache.keys().next().value;
+    streamUrlCache.delete(oldestKey);
+  }
+
+  return url;
+}
+
 export function preloadAudio(driveId) {
-  if (!driveId || urlCache.has(driveId) || inflight.has(driveId)) return;
-  getAudioObjectUrl(driveId).catch(() => {});
+  if (!driveId || streamUrlCache.has(driveId) || inflight.has(driveId)) return;
+  getStreamTrackUrl(driveId).catch(() => {});
+}
+
+export function revokeAllAudioUrls() {
+  for (const url of blobUrlCache.values()) {
+    URL.revokeObjectURL(url);
+  }
+  blobUrlCache.clear();
+  streamUrlCache.clear();
 }

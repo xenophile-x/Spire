@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { parseLRC } from "@/utils/lyricsParser";
-import { getAudioObjectUrl } from "@/utils/audioSource";
+import { getStreamTrackUrl } from "@/utils/audioSource";
 
 export default function AudioPlayer({
   activeTrack,
@@ -39,7 +39,7 @@ export default function AudioPlayer({
 
       if (!audioUrl && driveId) {
         try {
-          audioUrl = await getAudioObjectUrl(driveId);
+          audioUrl = await getStreamTrackUrl(driveId);
         } catch (err) {
           console.error("[AudioPlayer] Failed to read audio file from Google Drive proxy:", err);
           return;
@@ -182,11 +182,12 @@ export default function AudioPlayer({
   };
 
   return (
-    <audio
-      ref={(el) => {
-        audioRef.current = el;
-        if (elementRef) elementRef.current = el;
-      }}
+      <audio
+        ref={(el) => {
+          audioRef.current = el;
+          if (elementRef) elementRef.current = el;
+        }}
+        crossOrigin="anonymous"
       onTimeUpdate={() => {
         if (!audioRef.current || !onTimeUpdate) return;
         if (audioRef.current.readyState === 0) return;
