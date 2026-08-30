@@ -141,6 +141,7 @@ function AppContent({ onBackToLanding }) {
 
 export default function App() {
   const location = useLocation();
+  const { user: authUser, loading: authLoading } = useAuth();
   const [authError, setAuthError] = React.useState(null);
   const [currentScreen, setCurrentScreen] = useState(() => {
     const path = window.location.pathname;
@@ -150,6 +151,15 @@ export default function App() {
     if (path !== "/") return "app";
     return sessionStorage.getItem("spire_screen") || "home";
   });
+
+  // If user is already authenticated (session persisted), skip the marketing
+  // funnel — go straight to app. Fixes "after login pushes me back to login".
+  React.useEffect(() => {
+    if (!authLoading && authUser && location.pathname === "/" && currentScreen !== "app" && !SHARE_ROUTE_RE.test(location.pathname)) {
+      sessionStorage.setItem("spire_screen", "app");
+      setCurrentScreen("app");
+    }
+  }, [authUser, authLoading, currentScreen, location.pathname]);
 
   // Handle Supabase OAuth failure (?error=server_error&error_description=Unable+to+exchange...)
   // This leaves a broken URL — clean it and show a dismissible banner on PublicHome.
@@ -191,6 +201,15 @@ export default function App() {
   }
 
   if (currentScreen === "home") {
+    // Don't show marketing to logged-in user — wait for authLoading then redirect via effect above.
+    if (authLoading) {
+      return (
+        <div className="h-screen w-screen bg-black text-white flex items-center justify-center">
+          <div className="text-sm text-white/70">Loading...</div>
+        </div>
+      );
+    }
+    if (authUser) return null; // effect will switch to "app"
     return (
       <>
         <OfflineIndicator />
@@ -211,6 +230,15 @@ export default function App() {
   }
 
   if (currentScreen === "opening") {
+    if (!authLoading && authUser) {
+      sessionStorage.setItem("spire_screen", "app");
+      return (
+        <>
+          <OfflineIndicator />
+          <AppContent onBackToLanding={() => handleScreenChange("landing")} />
+        </>
+      );
+    }
     return (
       <>
         <OfflineIndicator />
@@ -220,6 +248,15 @@ export default function App() {
   }
 
   if (currentScreen === "landing") {
+    if (!authLoading && authUser) {
+      sessionStorage.setItem("spire_screen", "app");
+      return (
+        <>
+          <OfflineIndicator />
+          <AppContent onBackToLanding={() => handleScreenChange("landing")} />
+        </>
+      );
+    }
     return (
       <>
         <OfflineIndicator />
