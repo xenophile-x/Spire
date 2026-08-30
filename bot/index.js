@@ -25,7 +25,7 @@ const {
   buildDriveQuery
 } = require('./driveStream');
 
-// 1. Initialize Express Server (For Render Health Checks)
+
 const app = express();
 app.use(express.json());
 
@@ -46,7 +46,7 @@ const client = new Client({
 // 3. State Management & Environment Variables
 const queueMap = new Map();
 const linkRateLimit = new Map();
-const VOICE_EXEMPT_COMMANDS = new Set(['stop', 'login', 'link', 'launch']);
+const VOICE_EXEMPT_COMMANDS = new Set(['stop', 'login', 'link', 'launch', 'playlists', 'songs']);
 
 // Auto-disconnect when voice channel empty for too long
 const EMPTY_CHANNEL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -130,9 +130,6 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://spire-wheat-ten.vercel.app';
 
-/**
- * Queue initialization and handler per Guild.
- */
 function getQueue(guildId) {
   if (!queueMap.has(guildId)) {
     const player = createAudioPlayer();
@@ -267,6 +264,23 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   await handleEmptyChannelState(guildId);
 });
 
+/**
+ * Formats a Drive file list into numbered lines that fit in a Discord message.
+ */
+function formatFileList(files, charBudget = 1800) {
+  const lines = [];
+  let totalChars = 0;
+  for (let i = 0; i < files.length; i++) {
+    const line = `${i + 1}. ${files[i].name}`;
+    if (totalChars + line.length + 1 > charBudget && lines.length > 0) break;
+    lines.push(line);
+    totalChars += line.length + 1;
+  }
+  const omitted = files.length - lines.length;
+  if (omitted > 0) lines.push(`... and ${omitted} more`);
+  return lines.join('\n');
+}
+
 client.on('interactionCreate', async interaction => {
   const discordId = interaction.user.id;
 
@@ -317,31 +331,56 @@ client.on('interactionCreate', async interaction => {
   // Defer BEFORE any blocking work. Voice join (entersState 15s) and Supabase (cold start)
   // will both exceed Discord's 3s acknowledgement window if we await them first.
   // /link must also defer before voice check, otherwise `ensureVoiceConnection` blocks `deferReply` at 444.
-  if ((commandName === 'play' || commandName === 'playlist' || commandName === 'link') && !interaction.deferred && !interaction.replied) {
+  const DEFER_COMMANDS = new Set(['play', 'playlist', 'link', 'playlists', 'songs']);
+  if (DEFER_COMMANDS.has(commandName) && !interaction.deferred && !interaction.replied) {
     await interaction.deferReply(commandName === 'link' ? { flags: MessageFlags.Ephemeral } : undefined);
   }
 
   let connection = getVoiceConnection(guildId);
-  // VOICE_EXEMPT commands (link/login/stop/launch) must NEVER block on voice join.
-  // Previous bug: /link with user in voice still did `await ensureVoiceConnection` (4-15s)
-  // before reaching `deferReply` at 444 -> Discord timeout -> "application did not respond"
-  // + log "Failed to establish voice channel connection" seen in your screenshot.
+  // VOICE_EXEMPT commands (link/login/stop/launch/playlists/songs) must NEVER block on voice join.
+  // Before joining, check permissions so users get a clear error instead of a silent 15s timeout.
   const needsVoice = !VOICE_EXEMPT_COMMANDS.has(commandName);
   if (needsVoice && !connection && voiceChannel) {
-    connection = joinVoiceChannel({
-      channelId: voiceChannel.id,
-      guildId,
-      adapterCreator: interaction.guild.voiceAdapterCreator,
-      selfDeaf: true
-    });
+    const botMember = interaction.guild.members.me;
+    const missingPerms = ['Connect', 'Speak'].filter(perm => !voiceChannel.permissionsFor(botMember)?.has(perm));
+    if (missingPerms.length > 0) {
+      const msg = `❌ I need **${missingPerms.join(' and ')}** permission in **#${voiceChannel.name}**.`;
+      return interaction.deferred
+        ? interaction.editReply(msg)
+        : interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+    }
 
-    try {
-      await ensureVoiceConnection(connection);
-      // Bot is now in a channel with at least the requester — ensure empty-channel timer is cleared
-      cancelEmptyChannelDisconnect(guildId);
-    } catch (_err) {
-      console.error('[Voice Error] Failed to establish connection:', _err);
-      const errorMsg = '❌ Failed to establish voice channel connection.';
+    // Join with one retry — transient gateway/region hiccups recover on attempt 2.
+    let lastError = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        connection = joinVoiceChannel({
+          channelId: voiceChannel.id,
+          guildId,
+          adapterCreator: interaction.guild.voiceAdapterCreator,
+          selfDeaf: true
+        });
+
+        await ensureVoiceConnection(connection);
+        // Bot is now in a channel with at least the requester — ensure empty-channel timer is cleared
+        cancelEmptyChannelDisconnect(guildId);
+        break;
+      } catch (_err) {
+        lastError = _err;
+        console.error(`[Voice Error] Join attempt ${attempt}/2 failed:`, _err?.message || _err);
+        if (connection) {
+          try { connection.destroy(); } catch {}
+          connection = null;
+        }
+      }
+    }
+
+    if (!connection) {
+      const isTimeout = /timeout/i.test(String(lastError?.message || ''));
+      const hint = isTimeout
+        ? ' If you run this bot on Render/Replit (or any free-tier host), Discord voice (UDP) is blocked, so voice channels can NEVER connect — run it on your own PC or a VPS.'
+        : '';
+      const errorMsg = `❌ Failed to establish voice channel connection.${hint}`;
       return interaction.deferred
         ? interaction.editReply(errorMsg)
         : interaction.reply({ content: errorMsg, flags: MessageFlags.Ephemeral });
@@ -582,6 +621,62 @@ client.on('interactionCreate', async interaction => {
       }
     }
     return;
+  }
+
+  // Command: /playlists — list the user's Drive music folders (playlist names)
+  if (commandName === 'playlists') {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply();
+    }
+
+    try {
+      const accessToken = await getValidAccessToken(discordId);
+      const query = encodeURIComponent(`mimeType='application/vnd.google-apps.folder' and trashed = false`);
+      const data = await driveRequest(accessToken, `/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=100&orderBy=name`);
+      const folders = data.files || [];
+
+      if (folders.length === 0) {
+        return interaction.editReply('📂 No playlists (folders) found in your Google Drive.');
+      }
+
+      const list = formatFileList(folders);
+      const suffix = folders.length > 1 ? 's' : '';
+      return interaction.editReply(`📂 **Your Playlist${suffix} (${folders.length})**\n\`\`\`\n${list}\n\`\`\`Use **/playlist <name>** to play one.`);
+    } catch (err) {
+      console.error('[Playlists Error]:', err.message);
+      return interaction.editReply('❌ Could not load playlists. Connect your Google Drive in SPire settings first.');
+    }
+  }
+
+  // Command: /songs — list songs from the user's Drive music library.
+  // Optional "count" limits how many are shown (default: all, capped at 100).
+  if (commandName === 'songs') {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply();
+    }
+
+    try {
+      const requested = interaction.options.getInteger('count') || 0;
+      const pageSize = requested > 0 ? Math.min(requested, 1000) : 100;
+      const accessToken = await getValidAccessToken(discordId);
+      const query = encodeURIComponent(`mimeType contains 'audio/' and trashed = false`);
+      const data = await driveRequest(accessToken, `/drive/v3/files?q=${query}&fields=nextPageToken,files(id,name)&pageSize=${pageSize}&orderBy=name`);
+      const files = data.files || [];
+      const hasMore = Boolean(data.nextPageToken) && files.length === pageSize;
+
+      if (files.length === 0) {
+        return interaction.editReply('🎵 No audio files found in your Google Drive music library.');
+      }
+
+      const shown = files.length;
+      const header = `🎵 **Your Music Library** — showing ${shown}${requested > 0 ? ` of at least ${shown}` : ''}`;
+      const list = formatFileList(files);
+      const footer = hasMore ? `\n… more songs exist. Run **/songs <number>** to list up to that many (max 1000).` : '\nUse **/play <name>** to play a song.';
+      return interaction.editReply(`${header}\n\`\`\`\n${list}\n\`\`\`${footer}`);
+    } catch (err) {
+      console.error('[Songs Error]:', err.message);
+      return interaction.editReply('❌ Could not load your music library. Connect your Google Drive in SPire settings first.');
+    }
   }
 });
 

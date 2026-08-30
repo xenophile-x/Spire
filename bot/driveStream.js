@@ -7,9 +7,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const BOT_SECRET = process.env.BOT_SECRET;
 if (!BOT_SECRET) throw new Error('BOT_SECRET is required. Do not fall back to DISCORD_BOT_TOKEN.');
 
-/**
- * Escapes query parameters for Google Drive API queries.
- */
+
 function escapeDriveQuery(value) {
   if (!value) return '';
   return value
@@ -17,10 +15,6 @@ function escapeDriveQuery(value) {
     .replace(/'/g, "\\'")
     .replace(/"/g, '\\"');
 }
-
-/**
- * Builds safe Google Drive API query strings.
- */
 function buildDriveQuery(term, mimeType = null) {
   const safeTerm = escapeDriveQuery(term);
   let query = `name contains '${safeTerm}' and trashed = false`;

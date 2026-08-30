@@ -22,7 +22,7 @@ const commands = [
     .setDescription('Stop playback, clear queue, and leave voice channel').toJSON(),
   new SlashCommandBuilder()
     .setName('login')
-    .setDescription('Connect your Google Drive account via SPire Web App').toJSON(),
+    .setDescription('Connect your Google Drive account via Spire Web App').toJSON(),
   new SlashCommandBuilder()
     .setName('playlist')
     .setDescription('Play a Google Drive folder as a playlist')
@@ -35,6 +35,18 @@ const commands = [
   new SlashCommandBuilder()
     .setName('link')
     .setDescription('Generate a 6-digit code to link your Discord account').toJSON(),
+  new SlashCommandBuilder()
+    .setName('playlists')
+    .setDescription('List your Google Drive playlists (folders)').toJSON(),
+  new SlashCommandBuilder()
+    .setName('songs')
+    .setDescription('List all songs in your music library')
+    .addIntegerOption(option =>
+      option.setName('count')
+        .setDescription('How many to list (default: all, capped at 100)')
+        .setMinValue(1)
+        .setMaxValue(1000)
+    ).toJSON(),
   {
     name: 'launch',
     description: 'Launch SPire Activity',
