@@ -141,6 +141,7 @@ function AppContent({ onBackToLanding }) {
 
 export default function App() {
   const location = useLocation();
+  const [authError, setAuthError] = React.useState(null);
   const [currentScreen, setCurrentScreen] = useState(() => {
     const path = window.location.pathname;
     if (SHARE_ROUTE_RE.test(path)) return "app";
@@ -149,6 +150,20 @@ export default function App() {
     if (path !== "/") return "app";
     return sessionStorage.getItem("spire_screen") || "home";
   });
+
+  // Handle Supabase OAuth failure (?error=server_error&error_description=Unable+to+exchange...)
+  // This leaves a broken URL — clean it and show a dismissible banner on PublicHome.
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const hashParams = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const error = params.get("error") || hashParams.get("error");
+    const desc = params.get("error_description") || hashParams.get("error_description");
+    if (error) {
+      setAuthError(decodeURIComponent((desc || error).replace(/\+/g, " ")));
+      // Clean URL without reload — keep path but drop error query/hash
+      window.history.replaceState({}, "", location.pathname);
+    }
+  }, [location.search, location.hash, location.pathname]);
 
   // Public legal pages render instantly — no opening, landing, or auth gate.
   const LegalPage = LEGAL_ROUTES[location.pathname];
@@ -179,6 +194,17 @@ export default function App() {
     return (
       <>
         <OfflineIndicator />
+        {authError && (
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-lg w-[calc(100%-2rem)] rounded-2xl border border-red-500/30 bg-red-950/60 backdrop-blur-md px-4 py-3 flex items-start gap-3 text-sm">
+            <span className="text-red-400 mt-0.5">⚠</span>
+            <div className="flex-1 text-red-100/90 leading-relaxed">
+              <div className="font-medium text-red-100">Unable to sign in</div>
+              <div className="text-red-200/70 text-xs mt-1 break-words">{authError}</div>
+              <div className="text-white/50 text-xs mt-1.5">Fix: Supabase Dashboard → Auth → URL Configuration → set Site URL to <b className="text-white">https://spire-wheat-ten.vercel.app</b> and add it to Redirect URLs. In Google Cloud Console → Credentials → Authorized redirect URIs → add <b className="text-white">https://dhxxmkzwubevyegvibdk.supabase.co/auth/v1/callback</b></div>
+            </div>
+            <button onClick={() => setAuthError(null)} className="text-white/50 hover:text-white p-1">✕</button>
+          </div>
+        )}
         <PublicHome onEnterExperience={() => handleScreenChange("opening")} />
       </>
     );
