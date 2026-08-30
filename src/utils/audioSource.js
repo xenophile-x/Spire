@@ -108,6 +108,15 @@ export function preloadAudio(driveId) {
   getStreamTrackUrl(driveId).catch(() => {});
 }
 
+export function preloadAudioRange(driveId, startByte = 0, endByte = 1024 * 1024) {
+  if (!driveId) return;
+  getStreamTrackUrl(driveId).then((url) => {
+    if (!url) return;
+    const rangeHeader = `bytes=${startByte}-${endByte}`;
+    fetch(url, { method: "HEAD", headers: { Range: rangeHeader } }).catch(() => {});
+  }).catch(() => {});
+}
+
 export function revokeAllAudioUrls() {
   for (const url of blobUrlCache.values()) {
     URL.revokeObjectURL(url);

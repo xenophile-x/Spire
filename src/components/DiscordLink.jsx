@@ -1,27 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-/**
- * DiscordLink — Vite + React adaptation
- *
- * SECURE VERSION: uses Supabase Edge Function `redeem-link-code` (service_role)
- * instead of direct table access. This is the correct approach for this codebase.
- *
- * Why not direct client table access?
- * - Migration 20260828000000_fix_discord_security_ato.sql explicitly REVOKEs
- *   all access to linking_codes from anon/authenticated and blocks direct
- *   discord_id updates via RLS + trigger `prevent_client_discord_id_update`.
- * - Direct SELECT/UPDATE/DELETE from the browser would require re-opening
- *   those policies (USING true), re-introducing account-takeover vectors
- *   and race conditions (TOCTOU on expiry).
- * - Edge Functions enforce: rate-limiting (5/min), atomic consume
- *   (DELETE ... WHERE expires_at > now()), single-owner checks, and
- *   service_role-only writes — none of which RLS alone can guarantee.
- *
- * If you truly need pure client-side (no Edge Functions), see the
- * insecure alternative commented at the bottom — but DO NOT deploy the
- * RLS policies suggested in the prompt without understanding the tradeoff.
- */
 export default function DiscordLink({ userId, onLinked }) {
   const [code, setCode] = useState("");
   const [status, setStatus] = useState("idle"); // idle | loading | success | error
@@ -40,7 +19,7 @@ export default function DiscordLink({ userId, onLinked }) {
     setMessage("");
 
     try {
-      // ✅ Secure: let Edge Function validate expiry, atomicity, ownership
+      
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         throw new Error("Not authenticated. Please sign in first.");

@@ -155,7 +155,7 @@ export default function ArtistView({
 
 
       <div className="relative z-10 flex flex-col flex-1 min-h-0 p-8 sm:p-12 overflow-y-auto custom-scrollbar">
-        <div className="sticky top-0 z-30 -mx-8 sm:-mx-12 -mt-8 sm:-mt-12 mb-6 sm:mb-8 flex items-center justify-between gap-4 px-8 sm:px-12 py-4 bg-black/40 backdrop-blur-2xl backdrop-saturate-150 border-b border-white/10 will-change-transform">
+        <div className="sticky top-0 z-30 -mx-8 sm:-mx-12 -mt-8 sm:-mt-12 mb-6 sm:mb-8 flex items-center justify-between gap-4 px-8 sm:px-12 py-4 bg-black/40 border-b border-white/10 will-change-transform">
           <LiquidGlass
             blur={10}
             refraction={18}

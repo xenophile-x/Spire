@@ -299,15 +299,21 @@ function streamResponse(driveRes: Response, cors: Record<string, string>): Respo
   const contentLength = driveRes.headers.get("content-length");
   const acceptRanges = driveRes.headers.get("accept-ranges") || "bytes";
   const contentRange = driveRes.headers.get("content-range");
+  const isPartial = driveRes.status === 206 || !!contentRange;
 
   const headers: Record<string, string> = {
     ...cors,
     "Content-Type": contentType,
     "Accept-Ranges": acceptRanges,
-    "Cache-Control": "public, max-age=3600, immutable",
+    // Prevent caching of partial content to avoid browser reusing initial metadata probe
+    "Cache-Control": isPartial ? "private, max-age=0, must-revalidate" : "public, max-age=3600, immutable",
   };
   if (contentLength) headers["Content-Length"] = contentLength;
   if (contentRange) headers["Content-Range"] = contentRange;
+  if (isPartial && !contentRange) {
+    const total = Number(contentLength || 0);
+    headers["Content-Range"] = `bytes 0-${total - 1}/*`;
+  }
 
-  return new Response(driveRes.body, { headers });
+  return new Response(driveRes.body, { status: driveRes.status, headers });
 }

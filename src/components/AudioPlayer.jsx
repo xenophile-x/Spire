@@ -1,6 +1,9 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import { parseLRC } from "@/utils/lyricsParser";
 import { getStreamTrackUrl } from "@/utils/audioSource";
+
+const STALL_TIMEOUT_MS = 8000;
+const BUFFER_AHEAD_SECONDS = 30;
 
 export default function AudioPlayer({
   activeTrack,
@@ -11,6 +14,7 @@ export default function AudioPlayer({
   onDurationChange,
   onEnded,
   onLyricsParsed,
+  onBufferingChange,
   isRepeat = false,
   reloadKey = 0,
   elementRef = null,
@@ -18,9 +22,41 @@ export default function AudioPlayer({
   const audioRef = useRef(null);
   const loadTokenRef = useRef(0);
   const loadedTrackIdRef = useRef(null);
+  const stallTimerRef = useRef(null);
+  const lastProgressRef = useRef(0);
+  const isSeekingRef = useRef(false);
+  const pendingSeekRef = useRef(null);
 
   const latestPropsRef = useRef({ seekTime, isPlaying });
   latestPropsRef.current = { seekTime, isPlaying };
+
+  const clearStallTimer = useCallback(() => {
+    if (stallTimerRef.current) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+  }, []);
+
+  const startStallTimer = useCallback((audio) => {
+    clearStallTimer();
+    stallTimerRef.current = setTimeout(() => {
+      if (audio && audio.readyState > 0 && !audio.paused && audio.currentTime === lastProgressRef.current) {
+        console.warn("[AudioPlayer] Playback stalled, attempting recovery...");
+        audio.load();
+        setIsBuffering(true);
+      }
+    }, STALL_TIMEOUT_MS);
+  }, [clearStallTimer]);
+
+  const updateStallTimer = useCallback((audio) => {
+    if (audio && audio.readyState > 0 && !audio.paused) {
+      const current = audio.currentTime;
+      if (current > lastProgressRef.current) {
+        lastProgressRef.current = current;
+        startStallTimer(audio);
+      }
+    }
+  }, [startStallTimer]);
 
   useEffect(() => {
     let isMounted = true;
@@ -41,7 +77,10 @@ export default function AudioPlayer({
         try {
           audioUrl = await getStreamTrackUrl(driveId);
         } catch (err) {
-          console.error("[AudioPlayer] Failed to read audio file from Google Drive proxy:", err);
+          console.error("[AudioPlayer] Failed to get stream URL:", err);
+          if (isMounted && loadTokenRef.current === token) {
+            onBufferingChange?.(false);
+          }
           return;
         }
       }
@@ -51,6 +90,8 @@ export default function AudioPlayer({
       audio.src = audioUrl;
       audio.load();
       loadedTrackIdRef.current = activeTrack?.id || null;
+      lastProgressRef.current = 0;
+      onBufferingChange?.(true);
       if (onDurationChange) onDurationChange(0);
 
       const waitForReady = () =>
@@ -76,6 +117,7 @@ export default function AudioPlayer({
       } catch (err) {
         if (isMounted && loadTokenRef.current === token) {
           console.error("[AudioPlayer] Source failed to load:", err);
+          onBufferingChange?.(false);
         }
         return;
       }
@@ -84,44 +126,55 @@ export default function AudioPlayer({
 
       const { seekTime: pendingSeek, isPlaying: shouldPlay } = latestPropsRef.current;
       if (typeof pendingSeek === "number" && !isNaN(pendingSeek) && pendingSeek > 0) {
+        isSeekingRef.current = true;
+        pendingSeekRef.current = pendingSeek;
         try {
           audio.currentTime = pendingSeek;
         } catch {}
       }
 
       if (shouldPlay) {
-        audio.play().catch((err) => {
-          if (err.name !== "AbortError") {
-            console.error("[AudioPlayer] Playback start error:", err);
-          }
-        });
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            if (err.name !== "AbortError" && isMounted && loadTokenRef.current === token) {
+              console.error("[AudioPlayer] Playback start error:", err);
+            }
+          });
+        }
       }
+      onBufferingChange?.(false);
     }
 
     loadAudioSource();
 
     return () => {
       isMounted = false;
+      clearStallTimer();
     };
-  }, [activeTrack, reloadKey, onDurationChange]);
+  }, [activeTrack, reloadKey, onDurationChange, clearStallTimer, startStallTimer, onBufferingChange]);
 
   useEffect(() => {
-    if (!audioRef.current || !audioRef.current.src) return;
+    const audio = audioRef.current;
+    if (!audio || !audio.src) return;
 
     if (isPlaying) {
       if (loadedTrackIdRef.current !== activeTrack?.id) return;
-      const playPromise = audioRef.current.play();
+      const playPromise = audio.play();
       if (playPromise !== undefined) {
         playPromise.catch((err) => {
           if (err.name !== "AbortError") {
             console.error("[AudioPlayer] Play error:", err);
+            onBufferingChange?.(false);
           }
         });
       }
+      startStallTimer(audio);
     } else {
-      if (onTimeUpdate && audioRef.current && audioRef.current.readyState > 0) {
+      clearStallTimer();
+      if (onTimeUpdate && audio && audio.readyState > 0) {
         try {
-          onTimeUpdate(audioRef.current.currentTime);
+          onTimeUpdate(audio.currentTime);
         } catch (err) {
           if (err.name === "ReferenceError" && err.message.includes("EmptyRanges")) {
             console.warn("WebKit EmptyRanges bug caught on pause, ignoring.");
@@ -130,9 +183,9 @@ export default function AudioPlayer({
           }
         }
       }
-      audioRef.current.pause();
+      audio.pause();
     }
-  }, [isPlaying, activeTrack?.id, onTimeUpdate]);
+  }, [isPlaying, activeTrack?.id, onTimeUpdate, clearStallTimer, startStallTimer, onBufferingChange]);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -141,13 +194,16 @@ export default function AudioPlayer({
   }, [volume]);
 
   useEffect(() => {
+    const audio = audioRef.current;
     if (
-      audioRef.current &&
+      audio &&
       typeof seekTime === "number" &&
       !isNaN(seekTime) &&
-      Math.abs(audioRef.current.currentTime - seekTime) > 0.3
+      Math.abs(audio.currentTime - seekTime) > 0.3
     ) {
-      audioRef.current.currentTime = seekTime;
+      isSeekingRef.current = true;
+      pendingSeekRef.current = seekTime;
+      audio.currentTime = seekTime;
     }
   }, [seekTime]);
 
@@ -169,7 +225,50 @@ export default function AudioPlayer({
   const isRepeatRef = useRef(isRepeat);
   isRepeatRef.current = isRepeat;
 
-  const handleEnded = () => {
+  const handleTimeUpdate = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || !onTimeUpdate) return;
+    if (audio.readyState === 0) return;
+    try {
+      onTimeUpdate(audio.currentTime);
+      updateStallTimer(audio);
+    } catch (err) {
+      if (err.name === "ReferenceError" && err.message.includes("EmptyRanges")) {
+        console.warn("WebKit EmptyRanges bug caught, ignoring.");
+      } else {
+        console.error("[AudioPlayer] timeUpdate error:", err);
+      }
+    }
+  }, [onTimeUpdate, updateStallTimer]);
+
+  const handleProgress = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isSeekingRef.current && audio.buffered.length > 0) {
+      const bufferedEnd = audio.buffered.end(audio.buffered.length - 1);
+      if (bufferedEnd - audio.currentTime >= BUFFER_AHEAD_SECONDS) {
+        isSeekingRef.current = false;
+        pendingSeekRef.current = null;
+      }
+    }
+  }, []);
+
+  const handleWaiting = useCallback(() => {
+    onBufferingChange?.(true);
+  }, [onBufferingChange]);
+
+  const handleCanPlay = useCallback(() => {
+    onBufferingChange?.(false);
+    const audio = audioRef.current;
+    if (audio && isSeekingRef.current && pendingSeekRef.current !== null) {
+      try {
+        audio.currentTime = pendingSeekRef.current;
+      } catch {}
+    }
+  }, [onBufferingChange]);
+
+  const handleEnded = useCallback(() => {
+    clearStallTimer();
     if (isRepeatRef.current && audioRef.current) {
       audioRef.current.currentTime = 0;
       audioRef.current.play().catch((err) => {
@@ -179,35 +278,32 @@ export default function AudioPlayer({
       return;
     }
     if (onEnded) onEnded();
-  };
+  }, [onTimeUpdate, onEnded, clearStallTimer]);
 
   return (
-      <audio
-        ref={(el) => {
-          audioRef.current = el;
-          if (elementRef) elementRef.current = el;
-        }}
-        crossOrigin="anonymous"
-      onTimeUpdate={() => {
-        if (!audioRef.current || !onTimeUpdate) return;
-        if (audioRef.current.readyState === 0) return;
-        try {
-          onTimeUpdate(audioRef.current.currentTime);
-        } catch (err) {
-          if (err.name === "ReferenceError" && err.message.includes("EmptyRanges")) {
-            console.warn("WebKit EmptyRanges bug caught, ignoring.");
-          } else {
-            console.error("[AudioPlayer] timeUpdate error:", err);
-          }
-        }
+    <audio
+      ref={(el) => {
+        audioRef.current = el;
+        if (elementRef) elementRef.current = el;
       }}
+      crossOrigin="anonymous"
+      onTimeUpdate={handleTimeUpdate}
       onLoadedMetadata={() => {
         if (audioRef.current && onDurationChange) {
           onDurationChange(audioRef.current.duration);
         }
       }}
       onEnded={handleEnded}
-      preload="auto"
+      onProgress={handleProgress}
+      onWaiting={handleWaiting}
+      onCanPlay={handleCanPlay}
+      onError={(e) => {
+        const audio = e.target;
+        console.error("[AudioPlayer] Audio error:", audio.error?.message || audio.error?.code);
+        onBufferingChange?.(false);
+        clearStallTimer();
+      }}
+      preload="metadata"
       className="hidden"
     />
   );

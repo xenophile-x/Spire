@@ -10,7 +10,7 @@ import { trackMatchesArtist } from "@/utils/artistNames";
 import { getStationAnchor, setStationAnchor } from "@/utils/radioTimeline";
 import { RADIO_STATIONS } from "@/constants/radioStations";
 import { recordListen } from "@/services/supabaseService";
-import { preloadAudio } from "@/utils/audioSource";
+import { preloadAudio, preloadAudioRange } from "@/utils/audioSource";
 
 
 const PlayerTimeContext = React.createContext({ currentTime: 0 });
@@ -60,6 +60,8 @@ export function PlayerProvider({ children }) {
 
 
   const [needsReauth, setNeedsReauth] = useState(false);
+
+  const [isBuffering, setIsBuffering] = useState(false);
 
 
   const currentTimeRef = useRef(0);
@@ -411,6 +413,9 @@ export function PlayerProvider({ children }) {
     if (idx < 0) return;
     const next = queue[(idx + 1) % queue.length];
     preloadAudio(next?.driveFileId || next?.drive_file_id);
+    if (next?.driveFileId || next?.drive_file_id) {
+      preloadAudioRange(next.driveFileId || next.drive_file_id, 0, 512 * 1024);
+    }
   }, [activeTrack, isRadioMode, getActiveQueue]);
 
   const value = useMemo(
@@ -440,6 +445,7 @@ export function PlayerProvider({ children }) {
       setActiveArtist,
       needsReauth,
       setNeedsReauth,
+      isBuffering,
       currentTimeRef,
       playbackRef,
       setCurrentTime,
@@ -472,6 +478,7 @@ export function PlayerProvider({ children }) {
       activePlaylistId,
       activeArtist,
       needsReauth,
+      isBuffering,
       currentTimeRef,
       playbackRef,
       setCurrentTime,
@@ -508,6 +515,7 @@ export function PlayerProvider({ children }) {
           onEnded={handleTrackEnded}
           elementRef={karaokeAudioElementRef}
           isRepeat={isRepeat}
+          onBufferingChange={setIsBuffering}
         />
         {children}
       </PlayerTimeContext.Provider>

@@ -1,43 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getValidDriveToken } from "@/utils/driveApi";
+import { getStreamTrackUrl } from "@/utils/audioSource";
 
-async function fetchDriveBlobUrl(driveId) {
-  const valid = await getValidDriveToken();
-  if (!valid) throw new Error("No Drive token available.");
-  const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`,
-    { headers: { Authorization: `Bearer ${valid}` } }
-  );
-  if (response.status === 401) {
-    const { refreshDriveAccessToken } = await import("@/utils/driveApi");
-    const fresh = await refreshDriveAccessToken();
-    if (!fresh) throw new Error("Drive token refresh failed.");
-    const retry = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`,
-      { headers: { Authorization: `Bearer ${fresh}` } }
-    );
-    if (!retry.ok) throw new Error(`Drive fetch error: ${retry.status}`);
-    return createAudioBlobUrl(await retry.blob());
-  }
-  if (!response.ok) throw new Error(`Drive fetch error: ${response.status}`);
-  return createAudioBlobUrl(await response.blob());
-}
-
-function createAudioBlobUrl(rawBlob) {
-  const mimeType =
-    rawBlob.type && rawBlob.type !== "application/octet-stream"
-      ? rawBlob.type
-      : "audio/mpeg";
-  const audioBlob =
-    rawBlob.type === mimeType ? rawBlob : new Blob([rawBlob], { type: mimeType });
-  return URL.createObjectURL(audioBlob);
-}
-
+const STALL_TIMEOUT_MS = 8000;
 
 export function useAudioPlayer({ onEnded } = {}) {
   const audioRef = useRef(null);
   const loadTokenRef = useRef(0);
-  const blobUrlRef = useRef(null);
+  const stallTimerRef = useRef(null);
+  const lastProgressRef = useRef(0);
   const onEndedRef = useRef(onEnded);
   onEndedRef.current = onEnded;
 
@@ -45,10 +15,11 @@ export function useAudioPlayer({ onEnded } = {}) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const audio = new Audio();
-    audio.preload = "auto";
+    audio.preload = "metadata";
     audio.crossOrigin = "anonymous";
     audioRef.current = audio;
 
@@ -56,6 +27,7 @@ export function useAudioPlayer({ onEnded } = {}) {
       if (audio.readyState === 0) return;
       try {
         setCurrentTime(audio.currentTime);
+        lastProgressRef.current = audio.currentTime;
       } catch (err) {
         if (err.name === "ReferenceError" && err.message.includes("EmptyRanges")) {
           console.warn("WebKit EmptyRanges bug caught, ignoring.");
@@ -71,12 +43,23 @@ export function useAudioPlayer({ onEnded } = {}) {
     };
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
+    const onWaiting = () => setIsLoading(true);
+    const onCanPlay = () => setIsLoading(false);
+    const onError = (e) => {
+      const audioErr = e.target.error;
+      console.error("[useAudioPlayer] Audio error:", audioErr?.message || audioErr?.code);
+      setError(audioErr?.message || "Playback error");
+      setIsLoading(false);
+    };
 
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("loadedmetadata", onLoadedMetadata);
     audio.addEventListener("ended", handleEnded);
     audio.addEventListener("play", onPlay);
     audio.addEventListener("pause", onPause);
+    audio.addEventListener("waiting", onWaiting);
+    audio.addEventListener("canplay", onCanPlay);
+    audio.addEventListener("error", onError);
 
     return () => {
       audio.removeEventListener("timeupdate", onTimeUpdate);
@@ -84,23 +67,25 @@ export function useAudioPlayer({ onEnded } = {}) {
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("waiting", onWaiting);
+      audio.removeEventListener("canplay", onCanPlay);
+      audio.removeEventListener("error", onError);
       audio.pause();
       audio.src = "";
-      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+      if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
     };
   }, []);
 
-  const resolveTrackUrl = useCallback(async (track) => {
-    const direct = track.url || track.src;
-    if (direct) return direct;
-    const driveId =
-      track.driveFileId || track.drive_file_id || track.drive_id;
-    if (!driveId) throw new Error("No audio source available for this track.");
-
-
-    return fetchDriveBlobUrl(driveId);
+  const startStallTimer = useCallback((audio) => {
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = setTimeout(() => {
+      if (audio && audio.readyState > 0 && !audio.paused && audio.currentTime === lastProgressRef.current) {
+        console.warn("[useAudioPlayer] Playback stalled, attempting recovery...");
+        audio.load();
+        setIsLoading(true);
+      }
+    }, STALL_TIMEOUT_MS);
   }, []);
-
 
   const loadAndPlay = useCallback(
     async (track, { seekTo = 0 } = {}) => {
@@ -109,34 +94,37 @@ export function useAudioPlayer({ onEnded } = {}) {
 
       const myToken = ++loadTokenRef.current;
 
-
       audio.pause();
       setIsPlaying(false);
       setIsLoading(true);
       setCurrentTime(seekTo);
       setDuration(0);
+      setError(null);
+
+      const driveId =
+        track.driveFileId || track.drive_file_id || track.drive_id;
+      const direct = track.url || track.src;
 
       let url;
       try {
-        url = await resolveTrackUrl(track);
+        if (direct) {
+          url = direct;
+        } else if (driveId) {
+          url = await getStreamTrackUrl(driveId);
+        } else {
+          throw new Error("No audio source available for this track.");
+        }
       } catch (err) {
         if (loadTokenRef.current === myToken) {
           console.error("[AudioPlayer] Failed to resolve audio source:", err);
+          setError(err.message);
           setIsLoading(false);
         }
         return;
       }
 
+      if (loadTokenRef.current !== myToken) return;
 
-      if (loadTokenRef.current !== myToken) {
-        if (url !== track.url && url !== track.src) {
-          URL.revokeObjectURL(url);
-        }
-        return;
-      }
-
-      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
-      blobUrlRef.current = url;
       audio.src = url;
       audio.load();
 
@@ -161,32 +149,33 @@ export function useAudioPlayer({ onEnded } = {}) {
       try {
         await waitUntilReady();
 
-
         if (loadTokenRef.current !== myToken) return;
 
         if (seekTo > 0) audio.currentTime = seekTo;
         await audio.play();
+        startStallTimer(audio);
       } catch (err) {
-
-
         if (err?.name !== "AbortError" && loadTokenRef.current === myToken) {
           console.error("[AudioPlayer] Playback failed:", err);
+          setError(err.message);
         }
       } finally {
         if (loadTokenRef.current === myToken) setIsLoading(false);
       }
     },
-    [resolveTrackUrl]
+    [startStallTimer]
   );
 
   const pause = useCallback(() => audioRef.current?.pause(), []);
   const resume = useCallback(async () => {
     try {
-      await audioRef.current?.play();
+      const audio = audioRef.current;
+      await audio?.play();
+      if (audio) startStallTimer(audio);
     } catch (err) {
       if (err?.name !== "AbortError") console.error(err);
     }
-  }, []);
+  }, [startStallTimer]);
   const seek = useCallback((t) => {
     if (audioRef.current) audioRef.current.currentTime = t;
   }, []);
@@ -196,6 +185,7 @@ export function useAudioPlayer({ onEnded } = {}) {
     isPlaying,
     currentTime,
     duration,
+    error,
     loadAndPlay,
     pause,
     resume,

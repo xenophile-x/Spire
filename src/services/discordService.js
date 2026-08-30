@@ -122,12 +122,29 @@ export async function connectDiscordOAuth() {
 // Method 2: One-time linking code redemption (atomic server-side)
 export async function redeemLinkCode(code) {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new Error("Not authenticated");
+  if (!session?.access_token) throw new Error("Not authenticated — sign in with Google first");
+  const normalized = String(code).trim().toUpperCase();
   const res = await supabase.functions.invoke("redeem-link-code", {
     headers: { Authorization: `Bearer ${session.access_token}` },
-    body: { code },
+    body: { code: normalized },
   });
-  if (res.error) throw new Error(res.data?.error || res.error.message || "Failed to redeem code");
+  // Supabase wraps non-2xx as res.error with message "Edge Function returned a non-2xx status code"
+  // — surface the JSON error from the function instead.
+  if (res.error) {
+    let funcError = res.data?.error || res.error?.context?.json?.error || "";
+    if (!funcError && res.error?.context?.body) {
+      const body = res.error.context.body;
+      funcError = body instanceof ReadableStream
+        ? await new Response(body).text()
+        : String(body);
+    }
+    let parsed = funcError || "";
+    if (typeof parsed === "string" && parsed.startsWith("{")) {
+      try { parsed = JSON.parse(parsed).error || parsed; } catch {}
+    }
+    throw new Error(parsed || res.data?.error || res.error.message || "Failed to redeem code");
+  }
+  if (res.data?.error) throw new Error(res.data.error);
   return res.data;
 }
 

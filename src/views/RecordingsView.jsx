@@ -1,5 +1,5 @@
 
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import "material-symbols/rounded.css";
 import { Play, Pause } from "lucide-react";
 import { useNavigate } from "react-router-dom";

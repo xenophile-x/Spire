@@ -4,7 +4,15 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "http://localhost:5173";
-const ALLOWED_ORIGINS = [ALLOWED_ORIGIN, "https://discord.com", "https://discordapp.com"];
+const ALLOWED_ORIGINS = [
+  ALLOWED_ORIGIN,
+  "https://spire-wheat-ten.vercel.app",
+  "https://spire-hazel.vercel.app",
+  "https://discord.com",
+  "https://discordapp.com",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
 
 function getCorsHeaders(origin: string | null) {
   const allowed = ALLOWED_ORIGINS.includes(origin || "") ? origin : ALLOWED_ORIGIN;
