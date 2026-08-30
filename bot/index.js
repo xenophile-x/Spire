@@ -486,6 +486,17 @@ client.on('interactionCreate', async interaction => {
       let code = null;
       let inserted = false;
 
+      // Clear any prior unredeemed code FIRST. linking_codes has a UNIQUE
+      // index on discord_id (idx_linking_codes_discord_id_active), so the
+      // insert below would 23505 if a previous row still exists.
+      await fetch(`${SUPABASE_URL}/rest/v1/linking_codes?discord_id=eq.${discordId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'apikey': SUPABASE_SERVICE_ROLE_KEY
+        }
+      }).catch(() => {});
+
       for (let attempt = 0; attempt < 5; attempt++) {
         code = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
@@ -514,15 +525,6 @@ client.on('interactionCreate', async interaction => {
         console.error("Supabase Insert Error:", 'all 5 insert attempts failed — verify SUPABASE_SERVICE_ROLE_KEY and linking_codes RLS/service_role grant');
         return interaction.editReply('❌ Failed to generate unique code. Please try again.');
       }
-
-      // Delete old codes ONLY after successful insert, so user always has a valid code
-      await fetch(`${SUPABASE_URL}/rest/v1/linking_codes?discord_id=eq.${discordId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          'apikey': SUPABASE_SERVICE_ROLE_KEY
-        }
-      }).catch(() => {});
 
       linkRateLimit.set(discordId, Date.now());
       const cleanUrl = WEB_APP_URL.replace(/^https?:\/\//, '');
