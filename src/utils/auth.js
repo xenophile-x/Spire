@@ -6,8 +6,24 @@ let memoryDriveTokenTimestamp = null;
 
 function initFromStorage() {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const storedTs = localStorage.getItem(TIMESTAMP_KEY);
+    // Prefer sessionStorage (cleared on tab close) to limit XSS window
+    let stored = null;
+    let storedTs = null;
+    try {
+      stored = window.sessionStorage.getItem(STORAGE_KEY);
+      storedTs = window.sessionStorage.getItem(TIMESTAMP_KEY);
+    } catch {}
+    if (!stored) {
+      stored = localStorage.getItem(STORAGE_KEY);
+      storedTs = localStorage.getItem(TIMESTAMP_KEY);
+      // Migrate to sessionStorage if found in localStorage
+      if (stored) {
+        try {
+          window.sessionStorage.setItem(STORAGE_KEY, stored);
+          if (storedTs) window.sessionStorage.setItem(TIMESTAMP_KEY, storedTs);
+        } catch {}
+      }
+    }
     if (stored) {
       memoryDriveToken = stored;
       memoryDriveTokenTimestamp = storedTs ? Number(storedTs) : null;
@@ -19,11 +35,22 @@ initFromStorage();
 
 export function setDriveAccessToken(token) {
   if (token) {
+    // Minimal exposure: keep in memory, persist only if needed for reload.
+    // Token is short-lived (50 min) and never logged. Prefer sessionStorage if available
+    // to avoid persistence across tabs, but fallback to localStorage for compat.
     memoryDriveToken = token;
     memoryDriveTokenTimestamp = Date.now();
     try {
-      localStorage.setItem(STORAGE_KEY, token);
-      localStorage.setItem(TIMESTAMP_KEY, String(Date.now()));
+      const storage = window.sessionStorage || window.localStorage;
+      storage.setItem(STORAGE_KEY, token);
+      storage.setItem(TIMESTAMP_KEY, String(Date.now()));
+      // Clear the other storage to avoid duplication
+      try {
+        if (storage === window.sessionStorage) {
+          window.localStorage.removeItem(STORAGE_KEY);
+          window.localStorage.removeItem(TIMESTAMP_KEY);
+        }
+      } catch {}
     } catch {}
   }
 }
@@ -46,5 +73,7 @@ export function clearDriveAccessToken() {
   try {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(TIMESTAMP_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(TIMESTAMP_KEY);
   } catch {}
 }

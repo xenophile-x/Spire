@@ -5,7 +5,7 @@
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>Spire — Your Personal Cloud Music Player</title>
+    <title>Spire Your Personal Cloud Music Player</title>
     <meta
       name="description"
       content="Spire is a personal music streaming app that stores your music library in your own Google Drive. Upload your songs, stream them anywhere, build playlists, sing along with synced lyrics and karaoke, and share your library with friends."
@@ -31,37 +31,9 @@
     <link rel="preconnect" href="https://videos.pexels.com" crossorigin>
     <link rel="preconnect" href="https://images.unsplash.com">
 
-    <style>
-      .spire-static-home {
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 16px;
-        padding: 48px 24px;
-        text-align: center;
-        background: #000;
-      }
-      .spire-static-home img { width: 80px; height: 80px; border-radius: 9999px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
-      @media (min-width: 768px) { .spire-static-home img { width: 96px; height: 96px; } }
-      .spire-static-home h1 { font-size: 2.5rem; margin: 0; letter-spacing: -0.02em; font-weight: 600; color: #fff; }
-      .spire-static-home p { max-width: 560px; line-height: 1.7; color: rgba(255,255,255,0.65); margin: 4px 0 0; font-size: 14px; }
-    </style>
   </head>
-  <body class="bg-neutral-950 text-white font-sans antialiased">
-    <div id="root">
-      <div class="spire-static-home">
-        <img src="/spire.png" alt="Spire logo" />
-        <h1>Spire</h1>
-        <p>
-          Spire is a personal cloud music player. It keeps your entire music
-          library in your own Google Drive — upload your songs once and stream
-          them anywhere. Build playlists, follow synced lyrics, record karaoke,
-          explore radio stations, and share your library with friends.
-        </p>
-      </div>
-    </div>
+  <body class="bg-white text-white font-sans antialiased">
+    <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

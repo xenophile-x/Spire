@@ -109,6 +109,14 @@ Deno.serve(async (req) => {
         headers: { ...responseCors, "Content-Type": "text/plain" },
       });
     }
+    // Strict validation to prevent IDOR probe / path injection
+    const UUID_RE = /^[0-9a-fA-F-]{36}$|^[a-zA-Z0-9_-]{10,100}$/;
+    if (!UUID_RE.test(trackId)) {
+      return new Response("Invalid trackId", { status: 400, headers: responseCors });
+    }
+    if (shareToken && !/^[0-9a-fA-F-]{36}$/.test(shareToken)) {
+      return new Response("Invalid shareToken", { status: 400, headers: responseCors });
+    }
 
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -192,12 +200,14 @@ Deno.serve(async (req) => {
     }
 
     if (!authorized && requester?.email) {
+      // Must respect expires_at like RLS does — expired invites should not stream
       const { data: share } = await supabaseAdmin
         .from("library_shares")
         .select("id")
         .eq("owner_id", track.user_id)
         .eq("grantee_email", requester.email.toLowerCase())
         .eq("status", "accepted")
+        .or("expires_at.is.null,expires_at.gt.now()")
         .maybeSingle();
       if (share) {
         authorized = true;

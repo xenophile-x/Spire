@@ -14,8 +14,10 @@ import {
 import { GlassDropdownMenuContent } from "@/components/ui/glasscn/glass-dropdown-menu";
 import PlaylistPoster, { gradientForTitle } from "@/components/PlaylistPoster";
 import { cn } from "@/lib/utils";
-import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
+import PageHeader from "@/components/ui/PageHeader";
 import { AppleResizableGrid, AppleResizableTile } from "@/components/ui/AppleResize";
+import { GlassSkeleton } from "@/components/ui/glasscn/glass-skeleton";
+import { useLibrary } from "@/context/LibraryContext";
 
 const CONTENT_WRAP_CLASS = "w-full space-y-8 pb-12";
 
@@ -235,6 +237,10 @@ export default function PlaylistsView({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  let libraryLoaded = true;
+  try {
+    libraryLoaded = useLibrary()?.libraryLoaded ?? true;
+  } catch {}
 
   const displayPlaylists = [
     ...playlists.filter((pl) => pl.isFavorite === true),
@@ -422,7 +428,7 @@ export default function PlaylistsView({
       <div className="w-full text-white font-sans antialiased selection:bg-white selection:text-white">
         <div className="w-full space-y-8 pb-12">
           <div className="mx-auto max-w-5xl px-8 pt-8">
-          <div className="sticky top-0 z-30 -mx-8 -mt-8 mb-6 flex items-center justify-between gap-4 px-8 py-4 bg-black/40 backdrop-blur-2xl backdrop-saturate-150 border-b border-white/10 transition-all">
+          <div className="-mx-8 -mt-8 mb-6 flex items-center justify-between gap-4 px-8 py-4">
             <LiquidGlass
               blur={10}
               refraction={18}
@@ -679,7 +685,7 @@ export default function PlaylistsView({
     <div className="w-full text-white font-sans antialiased selection:bg-white selection:text-white">
       <div className={CONTENT_WRAP_CLASS}>
 
-        <StickyGlassHeader
+        <PageHeader
           title="Your Playlists"
           subtitle={isSelectionMode ? `${selectedCount} selected` : `${playlists.length} ${playlists.length === 1 ? "playlist" : "playlists"}`}
           action={
@@ -766,7 +772,33 @@ export default function PlaylistsView({
         />
 
 
-        {displayPlaylists.length === 0 ? (
+        {!libraryLoaded ? (
+          <div className="space-y-8 animate-in fade-in-0" aria-hidden="true" aria-label="Loading playlists">
+            <div>
+              <div className="h-5 w-32 rounded-full bg-white/10 animate-pulse mb-3" />
+              <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4 pt-2">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={`pl-sk-${i}`} className="flex flex-col gap-2">
+                    <GlassSkeleton className="aspect-square w-full rounded-2xl" />
+                    <GlassSkeleton className="h-3 w-24 rounded-full" />
+                    <GlassSkeleton className="h-2.5 w-16 rounded-full opacity-60" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-3 pt-4">
+              <div className="h-5 w-36 rounded-full bg-white/10 animate-pulse" />
+              <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={`genre-sk-${i}`} className="flex flex-col gap-2">
+                    <GlassSkeleton className="aspect-square w-full rounded-2xl" />
+                    <GlassSkeleton className="h-3 w-20 rounded-full" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : displayPlaylists.length === 0 ? (
           <div className="py-14 text-center">
             <ListPlus className="mx-auto mb-3 h-8 w-8 text-white/30" />
             <p className="text-sm text-white/50">No playlists yet. Create one to get started.</p>
@@ -817,7 +849,7 @@ export default function PlaylistsView({
                   )}
 
                   <div
-                    className={`relative aspect-square overflow-hidden rounded-2xl bg-white/5 shadow-sm transition-all duration-300 ${
+                    className={`relative isolate aspect-square overflow-hidden rounded-2xl bg-white/5 shadow-sm transition-all duration-300 ${
                       isSelectionMode && isSelected ? "ring-2 ring-white" : "group-hover:shadow-lg"
                     }`}
                   >
@@ -925,7 +957,7 @@ export default function PlaylistsView({
                         }}
                         className="group relative cursor-pointer h-full"
                       >
-                        <div className="relative aspect-square overflow-hidden rounded-2xl bg-white/5 shadow-sm transition-all duration-300 group-hover:shadow-lg h-full">
+                        <div className="relative isolate aspect-square overflow-hidden rounded-2xl bg-white/5 shadow-sm transition-all duration-300 group-hover:shadow-lg h-full">
                           <PlaylistPoster
                             title={item.title}
                             subtitle={`${count} ${count === 1 ? "song" : "songs"}`}

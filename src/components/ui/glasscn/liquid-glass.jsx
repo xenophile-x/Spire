@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 // Nested glass elements skip their own backdrop-filter entirely: the parent
 // already refracted those exact pixels, and stacking filters forces an extra
 // Chromium readback pass per frame for no visible gain.
-const LiquidGlassDepthContext = createContext(0);
+export const LiquidGlassDepthContext = createContext(0);
 
 export const LiquidGlass = forwardRef(function LiquidGlass(
   {
@@ -22,6 +22,7 @@ export const LiquidGlass = forwardRef(function LiquidGlass(
     bezel: _bezel,
     variant: _variant,
     saturation = 1.28,
+    isolate = false,
     className,
     style,
     children,
@@ -30,7 +31,7 @@ export const LiquidGlass = forwardRef(function LiquidGlass(
   ref,
 ) {
   const depth = useContext(LiquidGlassDepthContext);
-  const isNested = depth > 0;
+  const isNested = !isolate && depth > 0;
 
   const backdropFilter = isNested
     ? "none"

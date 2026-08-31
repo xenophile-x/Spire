@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
-
+import { GlassCard } from "@/components/ui/glasscn/glass-card";
+import { GlassInput } from "@/components/ui/glasscn/glass-input";
+import { GlassButton } from "@/components/ui/glasscn/glass-button";
+import { GlassIcon } from "@/components/ui/glasscn/glass-icon";
+import { GlassBadge } from "@/components/ui/glasscn/glass-badge";
+import { GlassSeparator } from "@/components/ui/glasscn/glass-separator";
+import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
 
 export function LibrarySharing({ user }) {
   const [emailInput, setEmailInput] = useState("");
@@ -72,7 +78,12 @@ export function LibrarySharing({ user }) {
   const handleSendInvite = async (e) => {
     e.preventDefault();
     const targetEmail = emailInput.trim().toLowerCase();
-    if (!targetEmail || targetEmail === user.email.toLowerCase()) {
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!targetEmail || !EMAIL_RE.test(targetEmail) || targetEmail.length > 254) {
+      setNotice("Enter a valid email address.");
+      return;
+    }
+    if (targetEmail === user.email.toLowerCase()) {
       setNotice("You can't invite yourself.");
       return;
     }
@@ -165,126 +176,145 @@ export function LibrarySharing({ user }) {
     }
   };
 
-
   return (
-    <div className="w-full rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl p-5 flex flex-col gap-4 text-white">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/80">
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
-        </div>
+    <GlassCard
+      glassVariant="liquid-refract"
+      liquidProps={{
+        blur: 14,
+        refraction: 6,
+        className: "rounded-3xl glass-rim-bright [--liquid-glass-rim-light:rgba(255,255,255,0.42)] [--liquid-glass-rim-width:1.2px]",
+      }}
+      className="gap-0 overflow-hidden py-0 flex flex-col"
+    >
+      <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+        <GlassIcon size="sm" className="shrink-0 pointer-events-none bg-white/10">
+          <span className="material-symbols-rounded text-xl text-white" style={{ fontVariationSettings: "'FILL' 1" }}>group</span>
+        </GlassIcon>
         <div>
-          <h3 className="text-sm font-semibold tracking-wide">Library Sharing</h3>
-          <p className="text-xs text-white/50">Grant access to stream your music library via Gmail</p>
+          <h3 className="text-sm font-semibold tracking-tight text-white">Library Sharing</h3>
+          <p className="text-[11px] font-medium text-white/60">Grant access to stream your music library via Gmail</p>
         </div>
       </div>
 
-      {loadError && (
-        <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
-          <span className="text-xs text-red-300">{loadError}</span>
-          <button
-            onClick={loadAllSharingData}
-            className="px-3 py-1 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-full transition-all shrink-0"
+      <div className="flex flex-col gap-4 p-5 pt-3 text-white">
+        {loadError && (
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span className="text-xs font-medium text-white">{loadError}</span>
+            <GlassButton onClick={loadAllSharingData} glassVariant="liquid-refract" className="shrink-0 rounded-full px-3 py-1 text-[11px] font-medium">
+              Retry
+            </GlassButton>
+          </div>
+        )}
+
+        {notice && (
+          <span className="text-xs font-medium text-white px-1">{notice}</span>
+        )}
+
+        {incomingInvites.length > 0 && (
+          <LiquidGlass
+            blur={10}
+            refraction={18}
+            saturation={1.6}
+            className="rounded-2xl p-3.5 flex flex-col gap-2 border border-white/20 bg-white/10 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] shadow-lg shadow-black/10"
           >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {notice && (
-        <span className="text-xs text-amber-300">{notice}</span>
-      )}
-
-      {incomingInvites.length > 0 && (
-        <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30">
-          <span className="text-[11px] font-bold tracking-wider uppercase text-amber-300">
-            Received Access Invites
-          </span>
-          {incomingInvites.map((invite) => (
-            <div key={invite.id} className="flex items-center justify-between gap-2 text-xs pt-1">
-              <span className="text-white/90 truncate">
-                <strong className="text-white">{invite.users?.full_name || invite.users?.email}</strong> invited you to their library.
-              </span>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => handleAcceptInvite(invite.id)}
-                  disabled={busyId === invite.id}
-                  className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-full transition-all text-xs shadow-md disabled:opacity-50"
-                >
-                  {busyId === invite.id ? "..." : "Accept"}
-                </button>
-                <button
-                  onClick={() => handleRemoveShare(invite.id)}
-                  disabled={busyId === invite.id}
-                  className="px-2 py-1 text-white/40 hover:text-white transition-all text-xs disabled:opacity-50"
-                >
-                  Decline
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <form onSubmit={handleSendInvite} className="flex items-center gap-2">
-        <input
-          type="email"
-          placeholder="Enter friend's Gmail..."
-          value={emailInput}
-          onChange={(e) => setEmailInput(e.target.value)}
-          className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-white/30 transition-all"
-          required
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-5 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-xs font-medium text-white transition-all disabled:opacity-50"
-        >
-          {loading ? "Sending..." : "Invite"}
-        </button>
-      </form>
-
-      {outgoingShares.length > 0 && (
-        <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
-          <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">
-            Sent Invites
-          </span>
-          {outgoingShares.map((share) => (
-            <div key={share.id} className="flex items-center justify-between text-xs py-1.5 px-3 rounded-xl bg-black/20 border border-white/5">
-              <span className="text-white/80 font-mono text-[11px]">{share.grantee_email}</span>
-              <div className="flex items-center gap-3">
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                  share.status === 'accepted' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                }`}>
-                  {share.status}
+            <span className="text-[11px] font-bold tracking-wider uppercase text-amber-300">
+              Received Access Invites
+            </span>
+            {incomingInvites.map((invite) => (
+              <div key={invite.id} className="flex items-center justify-between gap-2 text-xs pt-1">
+                <span className="text-white/90 truncate">
+                  <strong className="text-white">{invite.users?.full_name || invite.users?.email}</strong> invited you to their library.
                 </span>
-                <button
-                  onClick={() => handleRemoveShare(share.id)}
-                  disabled={busyId === share.id}
-                  className="text-white/30 hover:text-red-400 text-xs transition-colors disabled:opacity-50"
-                >
-                  ✕
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <GlassButton
+                    onClick={() => handleAcceptInvite(invite.id)}
+                    disabled={busyId === invite.id}
+                    glassVariant="liquid-refract"
+                    className="rounded-full px-4 py-1.5 text-xs font-bold bg-amber-500/90 text-black shadow-md hover:bg-amber-400 disabled:opacity-50 transition-colors"
+                  >
+                    {busyId === invite.id ? "..." : "Accept"}
+                  </GlassButton>
+                  <GlassButton
+                    onClick={() => handleRemoveShare(invite.id)}
+                    disabled={busyId === invite.id}
+                    glassVariant="liquid-refract"
+                    className="rounded-full px-3 py-1 text-xs font-medium text-white/70 hover:bg-white/10 disabled:opacity-50 transition-colors"
+                  >
+                    Decline
+                  </GlassButton>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </LiquidGlass>
+        )}
 
-      {acceptedLibraries.length > 0 && (
-        <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
-          <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">
-            Libraries Accessible To You
-          </span>
-          {acceptedLibraries.map((lib) => (
-            <div key={lib.id} className="flex items-center justify-between text-xs py-1.5 px-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-              <span className="text-emerald-300 font-medium">{lib.users?.full_name || lib.users?.email}'s Library</span>
-              <span className="text-[10px] text-emerald-400/80 font-bold uppercase">Connected</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+        <form onSubmit={handleSendInvite} className="flex items-center gap-2">
+  <div className="flex-1">
+    <GlassInput
+      type="email"
+      placeholder="Enter friend's Gmail..."
+      value={emailInput}
+      onChange={(e) => setEmailInput(e.target.value)}
+      required
+      className="w-full rounded-full h-11 text-xs placeholder:text-white/50 text-white bg-white/5 border-white/10 glass-rim-default"
+    />
+  </div>
+  <GlassButton
+    type="submit"
+    disabled={loading}
+    glassVariant="liquid-refract"
+    className="h-11 w-11 shrink-0 rounded-full flex items-center justify-center text-white hover:bg-white/10 disabled:opacity-40 p-0 glass-rim-default"
+    aria-label="Send invite"
+  >
+    {loading ? (
+      <span className="material-symbols-rounded text-xl animate-spin">progress_activity</span>
+    ) : (
+      <span className="material-symbols-rounded text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>arrow_forward</span>
+    )}
+  </GlassButton>
+</form>
+
+        {outgoingShares.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <GlassSeparator className="my-1" />
+            <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">
+              Sent Invites
+            </span>
+            {outgoingShares.map((share) => (
+              <LiquidGlass key={share.id} className="flex items-center justify-between text-xs py-2 px-3 rounded-xl border border-white/10 bg-white/[0.04] [--liquid-glass-rim-width:0.5px]">
+                <span className="text-white/80 font-mono text-[11px] truncate mr-2">{share.grantee_email}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  {share.status === 'pending' && (
+                    <GlassBadge className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border-0  text-white-300">
+                      Pending
+                    </GlassBadge>
+                  )}
+                  <button
+                    className="flex !h-7 !w-7 items-center justify-center shrink-0 text-white/50 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+                    onClick={() => handleRemoveShare(share.id)}
+                  >
+                    <span className="text-xs">✕</span>
+                  </button>
+                </div>
+              </LiquidGlass>
+            ))}
+          </div>
+        )}
+
+        {acceptedLibraries.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <GlassSeparator className="my-1" />
+            <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">
+              Libraries Accessible To You
+            </span>
+            {acceptedLibraries.map((lib) => (
+              <LiquidGlass key={lib.id} className="flex items-center justify-between text-xs py-2.5 px-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 [--liquid-glass-rim-width:0.5px]">
+                <span className="text-emerald-200 font-medium truncate">{lib.users?.full_name || lib.users?.email}'s Library</span>
+              </LiquidGlass>
+            ))}
+          </div>
+        )}
+      </div>
+    </GlassCard>
   );
 }

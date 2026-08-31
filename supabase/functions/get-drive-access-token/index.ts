@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const BOT_SECRET = Deno.env.get("BOT_SECRET") ?? Deno.env.get("DISCORD_BOT_TOKEN") ?? "";
+const BOT_SECRET = Deno.env.get("BOT_SECRET") ?? "";
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -26,17 +26,18 @@ Deno.serve(async (req: Request) => {
 
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    // Bot auth: require both service_role AND x-bot-secret (defense in depth, prevents key-only replay)
+    // Bot auth: require BOTH service_role AND x-bot-secret (defense in depth, prevents key-only replay)
+    // BOT_SECRET must be set separately from DISCORD_BOT_TOKEN — never fall back silently in production
+    if (!BOT_SECRET) {
+      console.error("[get-drive-access-token] BOT_SECRET not configured — refusing requests");
+      return new Response(JSON.stringify({ error: "Server misconfigured" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     const authHeader = req.headers.get("Authorization");
     const botSecret = req.headers.get("x-bot-secret");
     const validAuth = authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
-    const validSecret = BOT_SECRET && botSecret === BOT_SECRET;
-    // Allow either check to pass during rollout, but log if only one
-    if (!validAuth && !validSecret) {
+    const validSecret = botSecret === BOT_SECRET;
+    if (!validAuth || !validSecret) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    if (!validSecret && validAuth) {
-      console.warn("[get-drive-access-token] missing x-bot-secret — update bot env BOT_SECRET");
     }
 
     const body = await req.json().catch(() => null);

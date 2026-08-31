@@ -5,7 +5,6 @@ import SyncedLyrics from "@/components/SyncedLyrics";
 import { parseLRC } from "@/utils/lyricsParser";
 import { GlassScrimCard } from "@/components/ui/glasscn/glass-scrim-card";
 import { GlassIcon } from "@/components/ui/glasscn/glass-icon";
-import { GlassCard, GlassCardFooter } from "@/components/ui/glasscn/glass-card";
 import { usePlayerTime } from "@/context/PlayerContext";
 import { cn } from "@/lib/utils";
 
@@ -45,16 +44,13 @@ export default function ExpandedLyricsView({
   onPlayTrack,
   initialLyrics = false,
 }) {
-
   const { currentTime } = usePlayerTime();
   const [showLyrics, setShowLyrics] = useState(initialLyrics);
-
 
   const trackList = useMemo(() => {
     if (playbackQueue && playbackQueue.length > 0) {
       return playbackQueue;
     }
-
     return activeTrack ? [activeTrack] : [DEFAULT_TRACK];
   }, [playbackQueue, activeTrack]);
 
@@ -66,13 +62,11 @@ export default function ExpandedLyricsView({
 
   const [carouselIndex, setCarouselIndex] = useState(activeTrackIndex);
 
-
   useEffect(() => {
     setCarouselIndex(activeTrackIndex);
   }, [activeTrackIndex]);
 
   const currentTrack = trackList[carouselIndex] || trackList[0] || DEFAULT_TRACK;
-
   const title = currentTrack?.title || DEFAULT_TRACK.title;
   const artist = currentTrack?.artist || DEFAULT_TRACK.artist;
   const artwork = currentTrack?.artworkUrl || currentTrack?.cover || DEFAULT_TRACK.artworkUrl;
@@ -83,11 +77,9 @@ export default function ExpandedLyricsView({
     return parseLRC(currentTrack?.synced_lyrics || currentTrack?.syncedLyrics || "");
   }, [currentTrack]);
 
-
   useEffect(() => {
     setArtworkError(false);
   }, [artwork]);
-
 
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -166,195 +158,171 @@ export default function ExpandedLyricsView({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-between p-6 select-none font-sans pointer-events-auto overflow-hidden">
-
-      <div className="w-full flex items-center justify-start max-w-6xl mx-auto z-20">
+    <div className="fixed inset-0 z-50 flex flex-col justify-between p-6 pb-4 select-none font-sans pointer-events-auto overflow-hidden">
+      {/* Back button pushed to the absolute left */}
+      <div className="absolute top-10 left-10 z-50">
         <GlassIcon
           size="md"
           onClick={onClose}
           aria-label="Close expanded view"
           className="text-white cursor-pointer hover:bg-white/10 transition-colors"
-          liquidProps={{ blur: 8, refraction: 10 }}
+          liquidProps={{ blur: 12, refraction: 10 }}
         >
           <span className="material-symbols-rounded text-2xl">chevron_left</span>
         </GlassIcon>
       </div>
 
-
-      <div className="w-full max-w-6xl mx-auto flex-1 flex items-center justify-center my-auto">
+      {/* Carousel shifted down */}
+      <div className="w-full max-w-6xl mx-auto flex-1 flex items-center justify-center mt-[10vh]">
         <div
           key={showLyrics ? "lyrics" : "carousel"}
           className="w-full animate-in fade-in-0 zoom-in-95 animation-duration-300 flex items-center justify-center"
         >
           {showLyrics ? (
-
-          <GlassScrimCard
-            scrim={false}
-            liquidProps={{
-              blur: 10,
-              refraction: 9,
-              saturation: 1.1,
-              className: "rounded-[36px] [--liquid-glass-rim-light:rgba(255,255,255,0.45)]",
-            }}
-            className="relative flex h-[600px] w-full max-w-xl flex-col justify-between gap-0 overflow-hidden p-8 py-0"
-          >
-            <div className="relative z-10 mt-8 flex shrink-0 items-center gap-4 border-b border-white/20 pb-4">
-              {!artworkError ? (
-                <img src={artwork} alt={title} className="w-16 h-16 rounded-2xl object-cover shadow-lg" onError={() => setArtworkError(true)} />
-              ) : (
-                <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center">
-                  <span className="material-symbols-rounded text-white/40">music_note</span>
+            <GlassScrimCard
+              scrim={false}
+              liquidProps={{
+                blur: 10,
+                refraction: 9,
+                saturation: 1.1,
+                className: "rounded-[36px] [--liquid-glass-rim-light:rgba(255,255,255,0.45)]",
+              }}
+              className="relative flex h-[600px] w-full max-w-xl flex-col justify-between gap-0 overflow-hidden p-8 py-0"
+            >
+              <div className="relative z-10 mt-8 flex shrink-0 items-center gap-4 border-b border-white/20 pb-4">
+                {!artworkError ? (
+                  <img src={artwork} alt={title} className="w-16 h-16 rounded-2xl object-cover shadow-lg" onError={() => setArtworkError(true)} />
+                ) : (
+                  <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center">
+                    <span className="material-symbols-rounded text-white/40">music_note</span>
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <h3 className="text-2xl font-bold text-white truncate leading-tight drop-shadow-sm">{title}</h3>
+                  <p className="text-sm font-medium text-white/70 truncate">{artist}</p>
                 </div>
-              )}
-              <div className="min-w-0">
-                <h3 className="text-2xl font-bold text-white truncate leading-tight drop-shadow-sm">{title}</h3>
-                <p className="text-sm font-medium text-white/70 truncate">{artist}</p>
+              </div>
+
+              <SyncedLyrics
+                lines={parsedLyrics}
+                currentTime={currentTime}
+                onSeek={onSeek}
+                autoFollow={showLyrics}
+                emptyMessage="No synced lyrics available for this track."
+                containerClassName="flex-1 overflow-y-auto space-y-6 my-4 pr-2 custom-scrollbar flex flex-col items-center text-center relative z-10"
+                spacerClassName="h-32 shrink-0"
+                lineClassName={(index, isActive) =>
+                  `cursor-pointer transition-all duration-300 select-none ${
+                    isActive
+                      ? "text-3xl font-extrabold text-white opacity-100 scale-105 drop-shadow-lg"
+                      : "text-lg font-semibold text-white/40 hover:text-white/70 opacity-60"
+                  }`
+                }
+              />
+            </GlassScrimCard>
+          ) : (
+            <div className="relative flex flex-col items-center">
+              <div
+                className={cn(
+                  "relative w-full flex items-center justify-center h-[300px] [perspective:1400px] [transform-style:preserve-3d] overflow-visible touch-none transition-transform duration-500 ease-out",
+                  isDragging ? "cursor-grabbing" : "cursor-grab"
+                )}
+                onPointerDown={handlePointerDown}
+                style={{
+                  transform: `translateX(${dragOffset}px)`,
+                  transitionDuration: isDragging ? "0ms" : undefined,
+                }}
+              >
+                {trackList.map((track, idx) => {
+                  const offset = idx - carouselIndex;
+                  const absOffset = Math.abs(offset);
+
+                  if (absOffset > 5) return null;
+
+                  const isActive = offset === 0;
+                  const zIndex = 50 - absOffset;
+                  const sign = Math.sign(offset);
+
+                  const translateX = isActive ? 0 : sign * (160 + absOffset * 55);
+                  const translateZ = isActive ? 120 : -40 - absOffset * 45;
+                  const rotateY = isActive ? 0 : sign * -45; 
+                  
+                  const opacity = 1;
+
+                  const dragX = isActive && isDragging ? dragOffset : 0;
+                  const dragRotateY = isActive && isDragging ? dragOffset / 15 : 0;
+
+                  return (
+                    <div
+                      key={`${track?.id}-${idx}`}
+                      className="absolute transition-all duration-700 [transition-timing-function:cubic-bezier(0.2,0.8,0.2,1)]"
+                      style={{
+                        width: "280px", 
+                        height: "280px", 
+                        zIndex,
+                        opacity,
+                        transform: `translate3d(${translateX + dragX}px, 0px, ${translateZ}px) rotateY(${rotateY + dragRotateY}deg)`,
+                        transformStyle: "preserve-3d",
+                        willChange: "transform, opacity",
+                        transitionDuration: isDragging ? "0ms" : undefined,
+                      }}
+                    >
+                      <div
+                        className={cn(
+                          "h-full w-full overflow-hidden rounded-[24px] shadow-[0_16px_40px_rgba(0,0,0,0.5)] transition-all duration-300 ease-out",
+                          isActive
+                            ? "cursor-default ring-1 ring-white/40 scale-100 active:scale-[0.98]"
+                            : "cursor-pointer hover:-translate-y-2 active:scale-95"
+                        )}
+                        onClick={(e) => handleTrackClick(e, idx, track)}
+                      >
+                        <img
+                          src={track?.artworkUrl || track?.cover || artwork}
+                          alt={track?.title || title}
+                          className="h-full w-full object-cover rounded-[24px]"
+                          draggable={false}
+                          onError={(e) => { e.target.style.display = "none"; }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-
-            <SyncedLyrics
-              lines={parsedLyrics}
-              currentTime={currentTime}
-              onSeek={onSeek}
-              autoFollow={showLyrics}
-              emptyMessage="No synced lyrics available for this track."
-              containerClassName="flex-1 overflow-y-auto space-y-6 my-4 pr-2 custom-scrollbar flex flex-col items-center text-center relative z-10"
-              spacerClassName="h-32 shrink-0"
-              lineClassName={(index, isActive) =>
-                `cursor-pointer transition-all duration-300 select-none ${
-                  isActive
-                    ? "text-3xl font-extrabold text-white opacity-100 scale-105 drop-shadow-lg"
-                    : "text-lg font-semibold text-white/40 hover:text-white/70 opacity-60"
-                }`
-              }
-            />
-          </GlassScrimCard>
-        ) : (
-
-          <div
-            className={cn(
-              "relative w-full flex items-center justify-center h-[580px] [perspective:1200px] [transform-style:preserve-3d] overflow-visible touch-none transition-transform duration-500 ease-out",
-              isDragging ? "cursor-grabbing" : "cursor-grab"
-            )}
-            onPointerDown={handlePointerDown}
-            style={{
-              transform: `translateX(${dragOffset}px)`,
-              transitionDuration: isDragging ? "0ms" : undefined,
-            }}
-          >
-            {trackList.map((track, idx) => {
-              const offset = idx - carouselIndex;
-              const absOffset = Math.abs(offset);
-
-
-              if (absOffset > 5) return null;
-
-              const isActive = offset === 0;
-              const zIndex = 50 - absOffset;
-              const sign = Math.sign(offset);
-
-
-              const translateX = isActive ? 0 : sign * (160 + absOffset * 45);
-              const translateZ = isActive ? 140 : -60 - absOffset * 25;
-              const rotateY = isActive ? 0 : sign * -60;
-              const opacity = isActive ? 1 : Math.max(0.4, 1 - absOffset * 0.12);
-
-
-              const dragX = isActive && isDragging ? dragOffset : 0;
-              const dragRotateY = isActive && isDragging ? dragOffset / 15 : 0;
-
-              return (
-
-                <div
-                  key={`${track?.id}-${idx}`}
-                  className="absolute transition-all duration-700 [transition-timing-function:cubic-bezier(0.2,0.8,0.2,1)]"
-                  style={{
-                    width: "280px",
-                    height: "380px",
-                    zIndex,
-                    opacity,
-                    transform: `translate3d(${translateX + dragX}px, 0px, ${translateZ}px) rotateY(${rotateY + dragRotateY}deg)`,
-                    transformStyle: "preserve-3d",
-                    willChange: "transform, opacity",
-                    transitionDuration: isDragging ? "0ms" : undefined,
-                  }}
-                >
-
-                  <GlassCard
-                    glassVariant="liquid-refract"
-                    liquidProps={{
-                      blur: isActive ? 0 : 8,
-                      refraction: isActive ? 0 : 8,
-                      saturation: 1.2,
-                    }}
-                    surfaceClassName={cn(
-                      "h-full w-full overflow-hidden rounded-[24px] border border-white/20 bg-white/10 transition-all duration-200 ease-out shadow-[0_16px_40px_rgba(0,0,0,0.4)] [--liquid-glass-rim-light:rgba(255,255,255,0.4)]",
-                      isActive
-                        ? "cursor-default ring-1 ring-white/40 scale-100 active:scale-[0.98]"
-                        : "cursor-pointer brightness-75 scale-95 hover:brightness-100 hover:-translate-y-2 active:scale-90 active:brightness-50"
-                    )}
-                    className={cn(
-                      "h-full w-full flex-col gap-0 border-0 bg-transparent py-0 shadow-none ring-0",
-                      isActive ? "cursor-default" : "cursor-pointer"
-                    )}
-                    onClick={(e) => handleTrackClick(e, idx, track)}
-                    draggable={false}
-                  >
-
-                    <div className="relative h-[280px] w-full p-3 pb-0 pointer-events-none">
-                      <img
-                        src={track?.artworkUrl || track?.cover || artwork}
-                        alt={track?.title || title}
-                        className="h-full w-full rounded-t-[16px] rounded-b-[6px] object-cover shadow-lg"
-                        onError={(e) => { e.target.style.display = "none"; }}
-                      />
-                    </div>
-
-
-                    <GlassCardFooter
-                      glassVariant="liquid-refract"
-                      className="flex-1 flex-col items-center justify-center rounded-b-none border-t border-white/10 bg-transparent bg-gradient-to-b from-white/10 to-black/30 px-4 mt-2 shadow-inner backdrop-blur-xl pointer-events-none"
-                    >
-                      <p className="w-full truncate text-xl font-bold tracking-tight text-white drop-shadow-md text-center">
-                        {track?.title || title}
-                      </p>
-                      <p className="w-full truncate text-sm text-white/70 font-medium mt-1 text-center">
-                        {track?.artist || artist}
-                      </p>
-                    </GlassCardFooter>
-                  </GlassCard>
-                </div>
-              );
-            })}
-          </div>
-        )}
+          )}
         </div>
       </div>
 
-
-      <div className="w-full z-40">
-        <MusicBar
-          activeTrack={currentTrack}
-          isPlaying={isPlaying}
-          onTogglePlay={onTogglePlay}
-          currentTime={currentTime}
-          duration={duration}
-          volume={volume}
-          setVolume={setVolume}
-          onSeek={onSeek}
-          onNext={onNext}
-          onPrevious={onPrevious}
-          isRadioMode={isRadioMode}
-          onToggleRadio={onToggleRadio}
-          isLiked={isLiked}
-          onToggleLike={onToggleLike}
-          isRepeat={_isRepeat}
-          onToggleRepeat={_onToggleRepeat}
-          onOpenExpandedView={() => setShowLyrics(false)}
-          onOpenLyrics={() => setShowLyrics((prev) => !prev)}
-          playlists={playlists}
-          onAddToPlaylist={onAddToPlaylist}
-        />
+      <div className="w-full z-40 flex flex-col items-center gap-6 mt-auto">
+        <div className="w-full max-w-4xl flex justify-center">
+          <MusicBar
+            activeTrack={currentTrack}
+            isPlaying={isPlaying}
+            onTogglePlay={onTogglePlay}
+            currentTime={currentTime}
+            duration={duration}
+            volume={volume}
+            setVolume={setVolume}
+            onSeek={onSeek}
+            onNext={onNext}
+            onPrevious={onPrevious}
+            isRadioMode={isRadioMode}
+            onToggleRadio={onToggleRadio}
+            isLiked={isLiked}
+            onToggleLike={onToggleLike}
+            isRepeat={_isRepeat}
+            onToggleRepeat={_onToggleRepeat}
+            onOpenExpandedView={() => setShowLyrics(false)}
+            onOpenLyrics={() => setShowLyrics((prev) => !prev)}
+            playlists={playlists}
+            onAddToPlaylist={onAddToPlaylist}
+          />
+        </div>
+        
+        <div className="flex items-center justify-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-white/40 backdrop-blur-sm"></div>
+          <div className="w-32 h-1.5 rounded-full bg-white/40 backdrop-blur-sm"></div>
+        </div>
       </div>
     </div>
   );

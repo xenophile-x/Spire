@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Play, Info, Music2 } from "lucide-react";
 import "material-symbols/rounded.css";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
+import { GlassSkeleton } from "@/components/ui/glasscn/glass-skeleton";
 import ImageWithFallback from "@/components/ImageWithFallback";
 import ArtistOverview from "@/components/artist/ArtistOverview";
 import ArtistWikiDetails from "@/components/artist/ArtistWikiDetails";
@@ -115,9 +116,36 @@ export default function ArtistView({
   if (!artistTracks.length) {
     if (isLibraryLoading) {
       return (
-        <div className="flex w-full h-full flex-col items-center justify-center space-y-4 py-20 text-center text-white/50">
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white/80" />
-          <p className="text-sm font-medium animate-pulse">Loading artist…</p>
+        <div className="absolute inset-0 z-50 flex flex-col rounded-3xl overflow-hidden bg-white/[0.06] border border-white/25 shadow-2xl p-8 sm:p-12 animate-in fade-in-0 gap-6" aria-hidden="true" aria-label="Loading artist">
+          <div className="flex items-center justify-between gap-4">
+            <GlassSkeleton className="h-11 w-11 rounded-full" />
+            <GlassSkeleton className="h-9 w-32 rounded-full" />
+          </div>
+          <div className="mt-6 space-y-3">
+            <GlassSkeleton className="h-12 w-64 rounded-2xl sm:h-16 sm:w-96" />
+            <GlassSkeleton className="h-4 w-32 rounded-full opacity-60" />
+            <GlassSkeleton className="h-10 w-28 rounded-full mt-4" />
+          </div>
+          <div className="mt-6 flex gap-4">
+            <GlassSkeleton className="h-52 w-52 rounded-2xl shrink-0" />
+            <div className="flex-1 space-y-3">
+              <GlassSkeleton className="h-5 w-32 rounded-full" />
+              <GlassSkeleton className="h-4 w-full rounded-full opacity-60" />
+              <GlassSkeleton className="h-4 w-5/6 rounded-full opacity-60" />
+            </div>
+          </div>
+          <div className="space-y-2 pt-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-xl border border-white/5 px-4 py-3">
+                <GlassSkeleton className="h-10 w-10 rounded-lg shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <GlassSkeleton className="h-3 w-32 rounded-full" />
+                  <GlassSkeleton className="h-2.5 w-20 rounded-full opacity-60" />
+                </div>
+                <GlassSkeleton className="h-3 w-8 rounded-full opacity-40" />
+              </div>
+            ))}
+          </div>
         </div>
       );
     }
@@ -155,7 +183,7 @@ export default function ArtistView({
 
 
       <div className="relative z-10 flex flex-col flex-1 min-h-0 p-8 sm:p-12 overflow-y-auto custom-scrollbar">
-        <div className="sticky top-0 z-30 -mx-8 sm:-mx-12 -mt-8 sm:-mt-12 mb-6 sm:mb-8 flex items-center justify-between gap-4 px-8 sm:px-12 py-4 bg-black/40 border-b border-white/10 will-change-transform">
+        <div className="flex items-center justify-between gap-4 mb-6 sm:mb-8">
           <LiquidGlass
             blur={10}
             refraction={18}

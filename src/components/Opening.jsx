@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+
+const audioSynth = {
+  enabled: false,
+  volume: 0,
+  playBurstSound: () => console.log('Burst sound played!'),
+};
 
 const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
   const canvasRef = useRef(null);
@@ -6,8 +12,8 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
 
   useEffect(() => {
     const openglColors = [
-      "#00d4ff", "#00ff88", "#00ff44", "#ffee00",
-      "#ff8800", "#ff0000", "#bb00ff", "#ff00aa", "#333333"
+      "#333333", "#00b2ff", "#13e6a3", "#00e650", 
+      "#ffe600", "#ff5500", "#FF0000", "#8e00fe", "#ff007f"
     ];
 
     const bars = [];
@@ -41,35 +47,25 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
     if (!ctx) return;
 
     const render = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const width = canvas.clientWidth || canvas.width;
-      const height = canvas.clientHeight || canvas.height;
-      if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
-        canvas.width = Math.round(width * dpr);
-        canvas.height = Math.round(height * dpr);
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
+      const width = canvas.width;
+      const height = canvas.height;
       const cx = width / 2;
       const cy = height / 2;
       const focalLength = Math.min(width, height) * 0.85;
 
-      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
 
       const diveZ = Math.pow(progress, 2.5) * 5500;
 
-      const visible = [];
-      for (const bar of pencilBarsRef.current) {
-        const relZ = 2000 + bar.zOffset - diveZ;
-        if (relZ > 5 && relZ < 5000) {
-          visible.push({ bar, relZ });
-        }
-      }
-      visible.sort((a, b) => b.relZ - a.relZ);
+      const sortedBars = [...pencilBarsRef.current]
+        .map((bar) => ({ ...bar, relZ: 2000 + bar.zOffset - diveZ }))
+        .filter((b) => b.relZ > 5 && b.relZ < 5000)
+        .sort((a, b) => b.relZ - a.relZ);
 
-      const buildBarPath = (bar, relZ) => {
-        const zNear = Math.max(1, relZ);
-        const zFar = relZ + bar.length;
+      sortedBars.forEach((bar) => {
+        const zNear = Math.max(1, bar.relZ);
+        const zFar = bar.relZ + bar.length;
         if (zFar <= 0) return;
 
         const scaleNear = focalLength / zNear;
@@ -88,48 +84,57 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
         const nx = -sin;
         const ny = cos;
 
-        ctx.moveTo(xNearCenter + nx * (thickNear / 2), yNearCenter + ny * (thickNear / 2));
-        ctx.lineTo(xFarCenter + nx * (thickFar / 2), yFarCenter + ny * (thickFar / 2));
-        ctx.arc(xFarCenter, yFarCenter, Math.max(1, thickFar / 2), bar.angle + Math.PI / 2, bar.angle - Math.PI / 2);
-        ctx.lineTo(xNearCenter - nx * (thickNear / 2), yNearCenter - ny * (thickNear / 2));
-        ctx.arc(xNearCenter, yNearCenter, Math.max(1, thickNear / 2), bar.angle - Math.PI / 2, bar.angle + Math.PI / 2);
-        ctx.closePath();
-      };
+        const p1x = xNearCenter + nx * (thickNear / 2);
+        const p1y = yNearCenter + ny * (thickNear / 2);
+        const p2x = xFarCenter + nx * (thickFar / 2);
+        const p2y = yFarCenter + ny * (thickFar / 2);
+        const p4x = xNearCenter - nx * (thickNear / 2);
+        const p4y = yNearCenter - ny * (thickNear / 2);
 
-      const byColor = new Map();
-      for (const { bar } of visible) {
-        if (!byColor.has(bar.color)) byColor.set(bar.color, []);
-        byColor.get(bar.color).push(bar);
-      }
+        const buildPath = () => {
+          ctx.beginPath();
+          ctx.moveTo(p1x, p1y);
+          ctx.lineTo(p2x, p2y);
+          ctx.arc(xFarCenter, yFarCenter, Math.max(1, thickFar / 2), bar.angle + Math.PI / 2, bar.angle - Math.PI / 2);
+          ctx.lineTo(p4x, p4y);
+          ctx.arc(xNearCenter, yNearCenter, Math.max(1, thickNear / 2), bar.angle - Math.PI / 2, bar.angle + Math.PI / 2);
+          ctx.closePath();
+        };
 
-      ctx.filter = 'blur(9px)';
-      ctx.globalAlpha = 0.55;
-      for (const [color, barsOfColor] of byColor) {
-        ctx.beginPath();
-        for (const { bar, relZ } of barsOfColor) buildBarPath(bar, relZ);
-        ctx.fillStyle = color;
+        ctx.save();
+        ctx.filter = 'blur(9px)';
+        ctx.globalAlpha = 0.55;
+        buildPath();
+        ctx.fillStyle = bar.color;
         ctx.fill();
-      }
-      ctx.filter = 'none';
-      ctx.globalAlpha = 0.95;
-      for (const { bar, relZ } of visible) {
-        ctx.beginPath();
-        buildBarPath(bar, relZ);
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        buildPath();
         ctx.fillStyle = bar.color;
         ctx.fill();
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
         ctx.lineWidth = 0.6;
         ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
+        ctx.restore();
+      });
     };
 
-    let rafId = requestAnimationFrame(render);
-    window.addEventListener('resize', render);
-    return () => {
-      cancelAnimationFrame(rafId);
-      window.removeEventListener('resize', render);
+    const resizeCanvas = () => {
+      const parent = canvas.parentElement;
+      if (parent) {
+        canvas.width = parent.clientWidth;
+        canvas.height = parent.clientHeight;
+      }
+      render();
     };
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    render();
+
+    return () => window.removeEventListener('resize', resizeCanvas);
   }, [progress]);
 
   return (
@@ -139,109 +144,125 @@ const SpeedLinesCanvas = ({ progress, lineCount = 72 }) => {
   );
 };
 
-export default function Opening({ onComplete }) {
+export default function Opening({ onComplete, autoStart = false }) {
   const [hasStarted, setHasStarted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const maxTime = 4.0;
+  const lastPlayedTrigger = useRef(-1);
   const audioRef = useRef(null);
-  const timeRef = useRef(0);
-  const hasStartedRef = useRef(false);
-  const isPlayingRef = useRef(false);
-  const onCompleteRef = useRef(onComplete);
-  onCompleteRef.current = onComplete;
 
-  hasStartedRef.current = hasStarted;
-  isPlayingRef.current = isPlaying;
-
+  // Initialize audio once
   useEffect(() => {
-    const audio = new Audio('/boot.mp3');
-    audio.volume = 0.6;
-    audio.addEventListener('error', () => console.log("Boot audio unavailable"));
-    audioRef.current = audio;
+    audioRef.current = new Audio('/boot.mp3');
+    audioRef.current.volume = 0.6;
 
     return () => {
-      audio.pause();
-      audioRef.current = null;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
     };
   }, []);
 
-  const finish = useCallback(() => {
-    if (onCompleteRef.current) onCompleteRef.current();
-  }, []);
+  // Auto-start when coming from PublicHome Get Started (user gesture already given)
+  useEffect(() => {
+    if (autoStart && !hasStarted) {
+      const t = setTimeout(() => {
+        if (!hasStarted) {
+          setHasStarted(true);
+          setIsPlaying(true);
+          if (audioRef.current) {
+            audioRef.current.play().catch((err) => console.log("Audio play failed:", err));
+          }
+        }
+      }, 100);
+      return () => clearTimeout(t);
+    }
+  }, [autoStart, hasStarted]);
 
-  const startSequence = useCallback(() => {
-    if (hasStartedRef.current) return;
+  // Action to start the sequence
+  const startSequence = () => {
+    if (hasStarted) return;
     setHasStarted(true);
     setIsPlaying(true);
     if (audioRef.current) {
       audioRef.current.play().catch((err) => console.log("Audio play failed:", err));
     }
-  }, []);
+  };
 
-  const handleBackgroundClick = useCallback(() => {
-    if (!hasStartedRef.current) return;
+  // Keyboard & Click controls after starting
+  const handleBackgroundClick = () => {
+    if (!hasStarted) return; // Let the intro button handle the initial start
 
-    if (timeRef.current >= maxTime) {
-      finish();
+    if (currentTime >= maxTime) {
+      if (onComplete) onComplete();
     } else {
-      const next = !isPlayingRef.current;
-      setIsPlaying(next);
-      if (audioRef.current) {
-        if (next) {
-          audioRef.current.play().catch(() => {});
-        } else {
-          audioRef.current.pause();
+      setIsPlaying((prev) => {
+        const nextState = !prev;
+        if (audioRef.current) {
+          nextState ? audioRef.current.play().catch(()=>{}) : audioRef.current.pause();
         }
-      }
+        return nextState;
+      });
     }
-  }, [finish]);
+  };
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Enter") {
-        if (!hasStartedRef.current) {
+        if (!hasStarted) {
           startSequence();
-        } else if (timeRef.current >= maxTime) {
-          finish();
         } else {
-          timeRef.current = maxTime;
-          setCurrentTime(maxTime);
-          setIsPlaying(false);
-          if (audioRef.current) audioRef.current.pause();
+          // Skip logic if already running
+          if (currentTime >= maxTime) {
+            if (onComplete) onComplete();
+          } else {
+            setCurrentTime(maxTime);
+            setIsPlaying(false);
+            if (audioRef.current) audioRef.current.pause();
+          }
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [startSequence, finish]);
+  }, [hasStarted, currentTime, onComplete]);
 
+  // Sync Synth Logic
+  useEffect(() => {
+    if (!hasStarted) return;
+    audioSynth.enabled = true;
+    audioSynth.volume = 0.3;
+
+    if (currentTime >= 0.1 && currentTime < 0.5 && lastPlayedTrigger.current !== 0) {
+      audioSynth.playBurstSound();
+      lastPlayedTrigger.current = 0;
+    } else if (currentTime < 0.1) {
+      lastPlayedTrigger.current = -1;
+    }
+  }, [currentTime, hasStarted]);
+
+  // Animation Loop
   useEffect(() => {
     if (!isPlaying) return;
 
     let animationFrameId;
     let lastStamp = null;
-    let lastUiUpdate = 0;
 
     const tick = (stamp) => {
       if (!lastStamp) lastStamp = stamp;
       const delta = (stamp - lastStamp) / 1000;
       lastStamp = stamp;
 
-      const next = timeRef.current + delta;
-      timeRef.current = next;
-
-      if (next >= maxTime) {
-        timeRef.current = maxTime;
-        setCurrentTime(maxTime);
-        setIsPlaying(false);
-        return;
-      }
-
-      if (stamp - lastUiUpdate > 33) {
-        lastUiUpdate = stamp;
-        setCurrentTime(next);
-      }
+      setCurrentTime((prev) => {
+        const next = prev + delta;
+        if (next >= maxTime) {
+          setIsPlaying(false);
+          return maxTime; 
+        }
+        return next;
+      });
 
       animationFrameId = requestAnimationFrame(tick);
     };
@@ -250,37 +271,39 @@ export default function Opening({ onComplete }) {
     return () => cancelAnimationFrame(animationFrameId);
   }, [isPlaying]);
 
+  // Auto-advance
   useEffect(() => {
     if (hasStarted && currentTime >= maxTime) {
-      const timer = setTimeout(finish, 1200);
+      const timer = setTimeout(() => {
+        if (onComplete) onComplete();
+      }, 1200);
       return () => clearTimeout(timer);
     }
-  }, [currentTime, hasStarted, finish]);
+  }, [currentTime, hasStarted, onComplete]);
 
   const burstProgress = Math.min(1, Math.max(0, currentTime / maxTime));
 
   return (
     <div
-      className="relative h-screen w-screen bg-black font-sans overflow-hidden select-none cursor-pointer flex items-center justify-center"
+      className="relative h-screen w-screen bg-[#ffffff] font-sans overflow-hidden select-none cursor-pointer flex items-center justify-center"
       onClick={handleBackgroundClick}
     >
       <SpeedLinesCanvas progress={burstProgress} lineCount={72} />
-
-      <div
-        className={`absolute inset-0 z-50 flex items-center justify-center bg-black/80 transition-opacity duration-500 ${
-          hasStarted ? "opacity-0 pointer-events-none" : "opacity-100"
-        }`}
-      >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            startSequence();
-          }}
-          className="px-8 py-3 bg-white/10 text-white/80 font-medium tracking-wide rounded-full border border-white/20 shadow-sm transition-all duration-300 ease-out hover:scale-105 hover:shadow-md hover:bg-white/20 hover:text-white focus:outline-none backdrop-blur-sm"
-        >
-          Press Enter to continue
-        </button>
-      </div>
+      
+      {/* Pre-start White Overlay Gate - hidden when autoStart from Get Started */}
+      {!hasStarted && !autoStart && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white transition-opacity duration-500">
+          <button
+            onClick={(e) => {
+              e.stopPropagation(); // Prevents background click from firing at the same time
+              startSequence();
+            }}
+            className="px-8 py-3 bg-white text-gray-500 font-medium tracking-wide rounded-full border border-gray-200 shadow-sm transition-all duration-300 ease-out hover:scale-105 hover:shadow-md hover:text-gray-800 focus:outline-none"
+          >
+            Press Enter to continue
+          </button>
+        </div>
+      )}
     </div>
   );
 }

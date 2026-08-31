@@ -2,11 +2,13 @@ import React, { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import TrackCard from "@/components/TrackCard";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
+import { GlassSkeleton } from "@/components/ui/glasscn/glass-skeleton";
 import { splitArtistNames } from "@/utils/artistNames";
 import { ArtistProfileImage } from "@/components/ui/MediaImages";
 import { InfiniteCarousel } from "@/components/ui/InfiniteCarousel";
-import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
+import PageHeader from "@/components/ui/PageHeader";
 import { AppleResizableGrid, AppleResizableTile } from "@/components/ui/AppleResize";
+import { useLibrary } from "@/context/LibraryContext";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -19,8 +21,17 @@ export default function HomeView({
   playlists = [],
   onAddToPlaylist,
   onDeleteTrack,
+  libraryLoaded: libraryLoadedProp,
 }) {
   const navigate = useNavigate();
+  // Prefer explicit prop if provided (via AppRoutes), otherwise read from context
+  let libraryLoadedFromContext = true;
+  try {
+    libraryLoadedFromContext = useLibrary()?.libraryLoaded ?? true;
+  } catch {
+    // outside provider (e.g. story / test) — treat as loaded
+  }
+  const libraryLoaded = libraryLoadedProp ?? libraryLoadedFromContext;
 
   const { recentTracks, artists } = useMemo(() => {
     const now = Date.now();
@@ -67,7 +78,7 @@ export default function HomeView({
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-8 pb-12">
-      <StickyGlassHeader
+      <PageHeader
         title="Home"
         subtitle={`${userTracks.length} tracks in library`}
         action={
@@ -91,7 +102,53 @@ export default function HomeView({
         }
       />
 
-      {userTracks.length === 0 ? (
+      {!libraryLoaded ? (
+        <div className="w-full min-w-0 space-y-8 animate-in fade-in-0">
+          {/* Top Artists — 9 skeletons (3 more) */}
+          <div className="w-full min-w-0 space-y-3">
+            <h2 className="text-lg font-bold text-white">Artists</h2>
+            <div className="flex gap-5 overflow-hidden" aria-hidden="true" aria-label="Loading artists">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <div
+                  key={`artist-skeleton-${i}`}
+                  className="flex w-28 shrink-0 flex-col items-center gap-2"
+                >
+                  <GlassSkeleton className="h-28 w-28 rounded-full" />
+                  <GlassSkeleton className="h-3 w-20 rounded-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Recently Added — bottom music skeleton */}
+          <div className="w-full min-w-0 space-y-3">
+            <h2 className="text-lg font-bold text-white">Recently Added</h2>
+            <div className="flex gap-5 overflow-hidden" aria-hidden="true" aria-label="Loading recently added">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={`recent-skeleton-${i}`} className="flex w-40 shrink-0 flex-col gap-2 sm:w-48">
+                  <GlassSkeleton className="aspect-square w-full rounded-2xl" />
+                  <GlassSkeleton className="h-3 w-3/4 rounded-full" />
+                  <GlassSkeleton className="h-2.5 w-1/2 rounded-full opacity-60" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* All Songs — bottom music skeleton */}
+          <div className="w-full space-y-3 pt-4">
+            <h2 className="text-lg font-bold text-white">All Songs</h2>
+            <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4" aria-hidden="true" aria-label="Loading all songs">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={`grid-skeleton-${i}`} className="flex flex-col gap-2">
+                  <GlassSkeleton className="aspect-square w-full rounded-2xl" />
+                  <GlassSkeleton className="h-3 w-3/4 rounded-full" />
+                  <GlassSkeleton className="h-2.5 w-1/2 rounded-full opacity-60" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : userTracks.length === 0 ? (
         <div className="flex flex-col items-center justify-center space-y-2 py-16 text-center text-white/60">
           <p className="text-sm font-medium">No tracks in your library yet.</p>
           <p className="text-xs text-white/40">Upload an audio file above to get started.</p>

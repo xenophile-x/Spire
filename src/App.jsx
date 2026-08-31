@@ -52,8 +52,8 @@ function AppContent({ onBackToLanding }) {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen bg-black text-white flex items-center justify-center">
-        <div className="text-sm text-white/70">Loading...</div>
+      <div className="h-screen w-screen bg-white text-black flex items-center justify-center">
+        <div className="text-sm text-black/60">Loading...</div>
       </div>
     );
   }
@@ -61,22 +61,13 @@ function AppContent({ onBackToLanding }) {
   if (!user) {
     return (
       <div className="relative h-screen w-screen overflow-hidden text-white flex flex-col items-center justify-center p-4 select-none">
-        <video
-          key={loginVideoSrc}
-          src={loginVideoSrc}
-          onError={handleLoginVideoError}
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="auto"
-          disablePictureInPicture
-          disableRemotePlayback
-          poster={DEFAULT_BG_POSTER}
-          className="absolute inset-0 w-full h-full object-cover -z-20 scale-105 transform transition-transform duration-1000"
+        <img
+          src="/main.jpg"
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover -z-20"
+          fetchPriority="high"
         />
-
-        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-black/20 via-transparent to-black/30 backdrop-brightness-90" />
+        <div className="absolute inset-0 -z-10 bg-black/10" />
 
         {onBackToLanding && (
           <LiquidGlass
@@ -93,36 +84,33 @@ function AppContent({ onBackToLanding }) {
           </LiquidGlass>
         )}
 
-        <div className="z-10 flex flex-col items-center gap-8">
+        <div className="z-10 flex flex-col items-center gap-6">
           <div className="flex flex-col items-center gap-4">
             <img
               src="/spire.png"
-              alt="spire logo"
-              className="w-20 h-20 opacity-90 md:w-24 md:h-24 drop-shadow-2xl"
+              alt="Spire logo"
+              className="w-16 h-16 rounded-full object-cover shadow-[0_8px_32px_rgba(0,0,0,0.45)] ring-1 ring-white/20 md:w-[68px] md:h-[68px]"
             />
-            <h1 className="text-3xl md:text-4xl font-bold text-white tracking-wide drop-shadow-lg">
-              Welcome to Spire
+            <h1 className="text-[32px] md:text-[36px] font-semibold tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.55)]">
+              Welcome Back !
             </h1>
           </div>
 
-          <div className="transition-transform duration-300 hover:scale-105 active:scale-95">
-            <GlassButton
-              onClick={signInWithGoogle}
-              glassVariant={primaryVariant}
-              className="flex items-center justify-center gap-3 rounded-full bg-transparent px-8 py-5 text-sm font-medium text-white backdrop-blur-md md:text-base"
-            >
-              <GoogleIcon className="w-5 h-5" />
-              Continue with Google
-            </GlassButton>
-          </div>
+          <button
+            onClick={signInWithGoogle}
+            className="mt-2 flex items-center justify-center gap-2 rounded-full border border-white/60 bg-white/10 px-7 py-2.5 text-sm font-medium text-white backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.25)] transition-all hover:bg-white/15 hover:border-white/80 active:scale-[0.98]"
+          >
+            <GoogleIcon className="w-5 h-5" />
+            Continue with Google
+          </button>
         </div>
 
-        <div className="absolute bottom-5 z-10 flex items-center gap-3 text-xs text-white/50">
-          <a href="/privacypolicy" className="transition-colors hover:text-white/80">
+        <div className="absolute bottom-5 z-10 flex items-center gap-3 text-xs text-white/70">
+          <a href="/privacypolicy" className="transition-colors hover:text-white">
             Privacy Policy
           </a>
-          <span aria-hidden="true">·</span>
-          <a href="/termsofservice" className="transition-colors hover:text-white/80">
+          <span aria-hidden="true" className="text-white/40">·</span>
+          <a href="/termsofservice" className="transition-colors hover:text-white">
             Terms of Service
           </a>
         </div>
@@ -141,8 +129,9 @@ function AppContent({ onBackToLanding }) {
 
 export default function App() {
   const location = useLocation();
-  const { user: authUser, loading: authLoading } = useAuth();
+  const { user: authUser, loading: authLoading, signInWithGoogle } = useAuth();
   const [authError, setAuthError] = React.useState(null);
+  const [openingAutoStart, setOpeningAutoStart] = useState(false);
   const [currentScreen, setCurrentScreen] = useState(() => {
     const path = window.location.pathname;
     if (SHARE_ROUTE_RE.test(path)) return "app";
@@ -204,8 +193,8 @@ export default function App() {
     // Don't show marketing to logged-in user — wait for authLoading then redirect via effect above.
     if (authLoading) {
       return (
-        <div className="h-screen w-screen bg-black text-white flex items-center justify-center">
-          <div className="text-sm text-white/70">Loading...</div>
+        <div className="h-screen w-screen bg-white text-black flex items-center justify-center">
+          <div className="text-sm text-black/60">Loading...</div>
         </div>
       );
     }
@@ -223,7 +212,7 @@ export default function App() {
             <button onClick={() => setAuthError(null)} className="text-white/50 hover:text-white p-1">✕</button>
           </div>
         )}
-        <PublicHome onEnterExperience={() => handleScreenChange("opening")} />
+        <PublicHome onEnterExperience={() => { setOpeningAutoStart(true); handleScreenChange("opening"); }} />
       </>
     );
   }
@@ -241,7 +230,7 @@ export default function App() {
     return (
       <>
         <OfflineIndicator />
-        <Opening onComplete={() => handleScreenChange("landing")} />
+        <Opening autoStart={openingAutoStart} onComplete={() => { setOpeningAutoStart(false); handleScreenChange("landing"); }} />
       </>
     );
   }

@@ -109,22 +109,39 @@ export function useListenTogether({
     (channel, onPresence) => {
       channel
         .on("broadcast", { event: "listen-state" }, ({ payload }) => {
-          if (!payload?.track?.id) return;
+          if (!payload?.track?.id || typeof payload.track.id !== "string") return;
+          // Strict validation: reject oversized / non-uuid payloads to prevent injection
+          if (payload.track.id.length > 64 || !/^[0-9a-fA-F-]{8}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{12}$/.test(payload.track.id)) return;
           const { track, isPlaying, currentTime, ts } = payload;
+          // Sanitize track fields — never trust broadcast
+          const sanitizedTrack = {
+            id: String(track.id).slice(0, 64),
+            title: String(track.title || "Untitled").slice(0, 120),
+            artist: String(track.artist || "Unknown Artist").slice(0, 120),
+            cover: track.cover ? String(track.cover).slice(0, 500) : null,
+            artworkUrl: track.artworkUrl ? String(track.artworkUrl).slice(0, 500) : null,
+            synced_lyrics: null, // never sync lyrics via broadcast (XSS surface, large payload)
+            driveFileId: track.driveFileId ? String(track.driveFileId).slice(0, 100) : null,
+            genre: track.genre ? String(track.genre).slice(0, 40) : null,
+            duration: Number.isFinite(track.duration) ? Math.min(Math.max(0, Number(track.duration)), 36000) : null,
+          };
 
           let targetTime = Number(currentTime) || 0;
-          if (isPlaying && typeof ts === "number") {
+          if (!Number.isFinite(targetTime) || targetTime < 0) targetTime = 0;
+          targetTime = Math.min(targetTime, 36000);
+          if (isPlaying && typeof ts === "number" && Number.isFinite(ts)) {
             targetTime += Math.max(0, (Date.now() - ts)) / 1000;
+            targetTime = Math.min(targetTime, 36000);
           }
 
           const local = playbackRef.current;
-          const sameTrack = local.track?.id === track.id;
+          const sameTrack = local.track?.id === sanitizedTrack.id;
           const localTime = liveTime() || 0;
           const seekNeeded =
             !sameTrack || Math.abs(localTime - targetTime) > SEEK_TOLERANCE_S;
 
           if (!sameTrack || seekNeeded || isPlaying !== local.isPlaying) {
-            applyRemote({ track, isPlaying, currentTime: targetTime });
+            applyRemote({ track: sanitizedTrack, isPlaying: Boolean(isPlaying), currentTime: targetTime });
           }
         })
         .on("presence", { event: "sync" }, () => {
@@ -192,6 +209,10 @@ export function useListenTogether({
       const code = (rawCode || "").trim().toUpperCase();
       if (!code) {
         setError("Enter a room code first.");
+        return;
+      }
+      if (!/^[A-Z0-9]{6}$/.test(code)) {
+        setError("Invalid room code format.");
         return;
       }
       setError(null);

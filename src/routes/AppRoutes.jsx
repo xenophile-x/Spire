@@ -69,6 +69,7 @@ export default function AppRoutes({
   const homeElement = (
     <HomeView
       userTracks={userTracks}
+      libraryLoaded={libraryLoaded}
       searchQuery={searchQuery}
       isUploading={isUploading}
       onFileUpload={onFileUpload}
@@ -88,6 +89,7 @@ export default function AppRoutes({
         element={
           <ExploreView
             userTracks={userTracks}
+            libraryLoaded={libraryLoaded}
             onPlayTrack={handlePlayTrack}
             currentTrack={activeTrack}
             continueListening={continueListening}

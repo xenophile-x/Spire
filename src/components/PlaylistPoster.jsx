@@ -96,11 +96,11 @@ export default function PlaylistPoster({
 
   return (
     <div
-      className={`group relative flex h-full w-full cursor-pointer flex-col overflow-hidden rounded-2xl ${className}`}
+      className={`group relative isolate flex h-full w-full cursor-pointer flex-col overflow-hidden rounded-2xl ${className}`}
       style={{ backgroundColor: baseGradient.colors[0] }}
     >
 
-      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-2xl">
 
         <div
           className="absolute inset-0"
@@ -153,7 +153,7 @@ export default function PlaylistPoster({
 
 
       {displayArtists && (
-        <div className="absolute bottom-0 left-0 right-0 z-20 border-t border-white/10 bg-black/20 px-3 py-3 backdrop-blur-[8px]">
+        <div className="absolute bottom-0 left-0 right-0 z-20 overflow-hidden rounded-b-2xl border-t border-white/10 bg-black/20 px-3 py-3 backdrop-blur-[8px]">
           <p className="line-clamp-2 text-[9px] font-medium leading-snug tracking-wide text-white/95">
             {displayArtists}
           </p>

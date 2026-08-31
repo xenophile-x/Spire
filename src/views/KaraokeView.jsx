@@ -4,6 +4,8 @@ import "material-symbols/rounded.css";
 import { Play, Pause } from "lucide-react";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
 import { GlassCard } from "@/components/ui/glasscn/glass-card";
+import { GlassSkeleton } from "@/components/ui/glasscn/glass-skeleton";
+import { useLibrary } from "@/context/LibraryContext";
 import { parseLRC } from "@/utils/lyricsParser";
 import { formatTime } from "@/utils/formatters";
 import { DEFAULT_COVER } from "@/utils/trackMetadata";
@@ -16,7 +18,7 @@ import SyncedLyrics from "@/components/SyncedLyrics";
 import { fetchLyrics } from "@/services/lyricsService";
 import { usePlayerTime } from "@/context/PlayerContext";
 import { useNavigate } from "react-router-dom";
-import StickyGlassHeader from "@/components/ui/StickyGlassHeader";
+import PageHeader from "@/components/ui/PageHeader";
 
 function rawLrcFor(track) {
   return (
@@ -94,6 +96,10 @@ export default function KaraokeView({
 
   const { currentTime } = usePlayerTime();
   const navigate = useNavigate();
+  let libraryLoaded = true;
+  try {
+    libraryLoaded = useLibrary()?.libraryLoaded ?? true;
+  } catch {}
   const [autoScroll, setAutoScroll] = useState(true);
 
   const [saving, setSaving] = useState(false);
@@ -283,7 +289,7 @@ export default function KaraokeView({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-5">
-      <StickyGlassHeader
+      <PageHeader
         title="Karaoke"
         subtitle="Pick a track, sing along, and record"
         action={
@@ -318,7 +324,20 @@ export default function KaraokeView({
             </span>
           </div>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2 custom-scrollbar">
-            {userTracks.length === 0 ? (
+            {!libraryLoaded ? (
+              <div className="space-y-2 p-1 animate-in fade-in-0" aria-hidden="true">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={`karaoke-sk-${i}`} className="flex items-center gap-3 rounded-2xl px-3 py-2">
+                    <GlassSkeleton className="h-11 w-11 rounded-xl shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <GlassSkeleton className="h-3 w-32 rounded-full" />
+                      <GlassSkeleton className="h-2.5 w-20 rounded-full opacity-60" />
+                    </div>
+                    <GlassSkeleton className="h-4 w-4 rounded-full opacity-40" />
+                  </div>
+                ))}
+              </div>
+            ) : userTracks.length === 0 ? (
               <div className="flex h-full items-center justify-center px-4 py-12 text-center text-sm font-medium text-white/40">
                 No tracks in your library yet.
               </div>

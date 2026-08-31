@@ -9,8 +9,6 @@ import MobileNav from "@/components/MobileNav";
 import BackgroundManager from "@/components/BackgroundManager";
 import GlassSearchBar from "@/components/GlassSearchBar";
 import MusicBar from "@/components/MusicBar";
-import { AppleEditToggle, AppleEditDimOverlay } from "@/components/ui/AppleResize";
-import { useAppleEdit } from "@/context/AppleEditContext";
 import UploadModal from "@/components/UploadModal";
 import DuplicateFileDialog from "@/components/DuplicateFileDialog";
 import QuotaAlertDialog from "@/components/QuotaAlertDialog";
@@ -623,7 +621,6 @@ export default function AppLayout() {
     <div className="h-screen w-screen text-white font-sans flex flex-col relative overflow-hidden select-none">
 
       <BackgroundManager targetBgUrl={targetBgUrl} preloadUrl={nextWallpaperUrl} />
-      <AppleEditDimOverlay />
 
 
       {needsReauth && (
@@ -700,7 +697,6 @@ export default function AppLayout() {
                   onThemeToggle={handleThemeToggle}
                 />
               </div>
-              <AppleEditToggleGlobal />
             </div>
             <TemperedGlassCard surfaceClassName="flex flex-col h-full" className="relative z-10 flex min-h-0 w-full flex-1 flex-col overflow-hidden">
               <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8 custom-scrollbar flex flex-col">
@@ -815,33 +811,3 @@ export default function AppLayout() {
   );
 }
 
-function AppleEditToggleGlobal() {
-  const { isEditMode, toggleEditMode, removedIds, restoreAll } = useAppleEdit();
-  const removedCount = removedIds.size;
-  return (
-    <div className="flex items-center gap-2 shrink-0">
-      {removedCount > 0 && isEditMode && (
-        <button
-          type="button"
-          onClick={restoreAll}
-          className="hidden sm:inline-flex rounded-full bg-white/15 px-3 py-2 text-xs font-semibold text-white backdrop-blur-md border border-white/20 hover:bg-white/20 transition-colors"
-        >
-          Restore
-        </button>
-      )}
-      <button
-        type="button"
-        onClick={toggleEditMode}
-        aria-pressed={isEditMode}
-        className={
-          isEditMode
-            ? "inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2.5 text-xs font-bold tracking-wide text-black border border-white shadow-lg shadow-black/20 transition-all active:scale-95"
-            : "inline-flex items-center gap-1.5 rounded-full bg-white/15 px-4 py-2.5 text-xs font-bold tracking-wide text-white border border-white/20 backdrop-blur-md hover:bg-white/20 hover:border-white/30 transition-all active:scale-95"
-        }
-      >
-        <span className="material-symbols-rounded text-[16px] leading-none">{isEditMode ? "check" : "edit"}</span>
-        <span className="hidden sm:inline">{isEditMode ? "Done" : "Edit"}</span>
-      </button>
-    </div>
-  );
-}

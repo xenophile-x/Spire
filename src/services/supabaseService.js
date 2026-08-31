@@ -286,6 +286,18 @@ export const getLikedSongs = async (userId) => {
   return new Set(data.map((row) => row.track_id));
 };
 
+export const getRecentlyLikedSongs = async (userId, limit = 10) => {
+  const { data, error } = await supabase
+    .from("liked_songs")
+    .select("track_id, liked_at")
+    .eq("user_id", userId)
+    .order("liked_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return data || [];
+};
+
 export const toggleLikedSong = async (userId, trackId, isCurrentlyLiked) => {
   if (isCurrentlyLiked) {
     const { error } = await supabase

@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 export default function DiscordLink({ userId, onLinked }) {
   const [code, setCode] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | loading | success | error
+  const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
 
   const handleLink = async (e) => {
@@ -31,7 +31,6 @@ export default function DiscordLink({ userId, onLinked }) {
       });
 
       if (error) {
-        // supabase-js wraps Edge Function errors; prefer data.error if present
         throw new Error(data?.error || error.message || "Failed to redeem code");
       }
       if (data?.error) throw new Error(data.error);
@@ -45,21 +44,6 @@ export default function DiscordLink({ userId, onLinked }) {
       setMessage(err.message || "Something went wrong.");
     }
   };
-
-  // Insecure direct-client alternative (NOT RECOMMENDED — requires weakening RLS):
-  // const handleLinkInsecure = async (e) => {
-  //   e.preventDefault();
-  //   const { data: linkData, error: linkError } = await supabase.from("linking_codes").select("*").eq("code", code).single();
-  //   if (linkError || !linkData) throw new Error("Invalid code.");
-  //   if (new Date(linkData.expires_at) < new Date()) {
-  //     await supabase.from("linking_codes").delete().eq("code", code);
-  //     throw new Error("Expired.");
-  //   }
-  //   const { error: updateError } = await supabase.from("users").update({ discord_id: linkData.discord_id }).eq("id", userId);
-  //   if (updateError) throw new Error("Failed to link.");
-  //   await supabase.from("linking_codes").delete().eq("code", code);
-  // };
-
   return (
     <div className="p-6 max-w-md mx-auto bg-gray-900 rounded-xl shadow-md border border-gray-800 text-white">
       <h2 className="text-xl font-bold mb-2">Connect Discord</h2>
