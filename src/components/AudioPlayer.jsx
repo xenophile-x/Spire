@@ -42,8 +42,7 @@ export default function AudioPlayer({
     stallTimerRef.current = setTimeout(() => {
       if (audio && audio.readyState > 0 && !audio.paused && audio.currentTime === lastProgressRef.current) {
         console.warn("[AudioPlayer] Playback stalled, attempting recovery...");
-        audio.load();
-        setIsBuffering(true);
+        audio.play().catch(() => {});
       }
     }, STALL_TIMEOUT_MS);
   }, [clearStallTimer]);

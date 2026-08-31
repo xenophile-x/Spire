@@ -107,8 +107,8 @@ export default function KaraokeView({
   const [quotaAlert, setQuotaAlert] = useState(null);
   const [liveLyrics, setLiveLyrics] = useState({});
 
-
   const [lyricsState, setLyricsState] = useState({});
+  const lyricsFetchingRef = useRef(new Set());
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [previewTime, setPreviewTime] = useState(0);
   const [previewDuration, setPreviewDuration] = useState(0);
@@ -116,12 +116,20 @@ export default function KaraokeView({
   const previewScrubbingRef = useRef(false);
 
   useEffect(() => {
+    if (activeTrack && navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then((stream) => stream.getTracks().forEach((t) => t.stop()))
+        .catch(() => {});
+    }
+  }, [activeTrack]);
+
+  useEffect(() => {
     const trackId = activeTrack?.id;
     if (!trackId) return;
-    if (lyricsState[trackId]?.status === "loading") return;
-    if (lyricsState[trackId]?.status === "done") return;
+    if (lyricsFetchingRef.current.has(trackId)) return;
     if (rawLrcFor(activeTrack) || plainLyricsFor(activeTrack)) return;
 
+    lyricsFetchingRef.current.add(trackId);
     setLyricsState((prev) => ({ ...prev, [trackId]: { status: "loading" } }));
 
 
@@ -141,11 +149,10 @@ export default function KaraokeView({
         console.warn("[Karaoke] Lyrics lookup failed:", err);
       })
       .finally(() => {
-
-
+        lyricsFetchingRef.current.delete(trackId);
         setLyricsState((prev) => ({ ...prev, [trackId]: { status: "done" } }));
       });
-  }, [activeTrack, duration, lyricsState]);
+  }, [activeTrack, duration]);
 
   const activeLyrics = useMemo(() => {
     const trackId = activeTrack?.id;
@@ -528,10 +535,6 @@ export default function KaraokeView({
                     onScrubEnd={handlePreviewScrubEnd}
                     label="Recording preview"
                   />
-                  <div className="mt-0.5 flex items-center justify-between text-[10px] font-semibold tabular-nums text-white/50">
-                    <span>{formatTime(previewTime)}</span>
-                    <span>{formatTime(previewDuration)}</span>
-                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <button

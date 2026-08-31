@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 export const getAcceptedLibraryShares = async (userId) => {
   const { data, error } = await supabase
     .from("library_shares")
-    .select("owner_id, users:owner_id ( full_name, email )")
+    .select("owner_id, users:owner_id ( full_name, email, avatar_url )")
     .eq("grantee_id", userId)
     .eq("status", "accepted")
     .or("expires_at.is.null,expires_at.gt.now()");
@@ -13,6 +13,7 @@ export const getAcceptedLibraryShares = async (userId) => {
   return (data || []).map((share) => ({
     owner_id: share.owner_id,
     shared_by: share.users?.full_name || share.users?.email || "A Friend",
+    shared_by_avatar: share.users?.avatar_url || null,
   }));
 };
 

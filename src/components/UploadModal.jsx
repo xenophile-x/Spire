@@ -181,8 +181,8 @@ export default function UploadModal({
           )}
 
           {errorMessage && (
-            <div className="flex items-center gap-2.5 rounded-xl border border-red-400/30 bg-red-500/20 p-3.5 text-xs text-red-100">
-              <span className="material-symbols-rounded shrink-0 text-lg text-red-300">error</span>
+            <div className="flex items-center gap-2.5 rounded-xl p-3.5 text-xs text-red-400">
+              <span className="material-symbols-rounded shrink-0 text-lg text-red-400">error</span>
               <span className="leading-tight">{errorMessage}</span>
             </div>
           )}

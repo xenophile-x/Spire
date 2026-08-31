@@ -174,22 +174,23 @@ export function LibraryProvider({ children }) {
             return {
               records: await getUserLibrary(share.owner_id),
               sharedBy: share.shared_by,
+              sharedByAvatar: share.shared_by_avatar,
             };
           } catch (err) {
             console.warn("[Library] Failed to load shared library:", err);
-            return { records: [], sharedBy: null };
+            return { records: [], sharedBy: null, sharedByAvatar: null };
           }
         })
       );
 
       const allRecords = [
-        ...records.map((rec) => ({ rec, sharedBy: null })),
+        ...records.map((rec) => ({ rec, sharedBy: null, sharedByAvatar: null })),
         ...sharedLibraries.flatMap((lib) =>
-          lib.records.map((rec) => ({ rec, sharedBy: lib.sharedBy }))
+          lib.records.map((rec) => ({ rec, sharedBy: lib.sharedBy, sharedByAvatar: lib.sharedByAvatar }))
         ),
       ];
 
-      const formattedPromises = allRecords.map(async ({ rec, sharedBy }) => {
+      const formattedPromises = allRecords.map(async ({ rec, sharedBy, sharedByAvatar }) => {
         const trackObj = rec.tracks || {};
 
         const meta = Array.isArray(trackObj.track_metadata)
@@ -252,6 +253,7 @@ export function LibraryProvider({ children }) {
           duration: trackObj.duration_seconds || 0,
           isShared: Boolean(sharedBy),
           sharedBy: sharedBy || null,
+          sharedByAvatar: sharedByAvatar || null,
         };
       });
 

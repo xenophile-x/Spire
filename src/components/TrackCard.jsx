@@ -57,30 +57,46 @@ export default function TrackCard({
 
           {track.isShared && (
             <div
-              className="absolute left-2 top-2 z-20 flex max-w-[85%] items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 backdrop-blur-sm border border-white/15"
+              className="absolute left-2 top-2 z-20 flex items-center gap-1"
               title={`Shared by ${track.sharedBy || "a friend"}`}
             >
-              <span className="material-symbols-rounded text-[12px] leading-none text-emerald-300">
-                group
-              </span>
-              <span className="text-[10px] font-medium text-white/90 truncate">
-                {track.sharedBy || "Shared"}
-              </span>
+              {track.sharedByAvatar ? (
+                <img
+                  src={track.sharedByAvatar}
+                  alt={track.sharedBy}
+                  className="h-6 w-6 rounded-full border border-white/30 object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div
+                className={`h-6 w-6 rounded-full border border-white/30 bg-white/20 items-center justify-center ${track.sharedByAvatar ? 'hidden' : 'flex'}`}
+              >
+                <span className="material-symbols-rounded text-[12px] leading-none text-emerald-300">
+                  person
+                </span>
+              </div>
             </div>
           )}
 
           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <div
+            <LiquidGlass
+              blur={12}
+              refraction={18}
+              saturation={1.6}
+              isolate
               role="button"
               tabIndex={0}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md border border-white/20 hover:bg-white/20 transition-colors"
+              className="flex h-12 w-12 cursor-pointer items-center justify-center bg-white/10 border border-white/25 backdrop-blur-md [--liquid-glass-rim-light:rgba(255,255,255,0.7)] transition-all outline-none hover:bg-white/20 hover:scale-105 shadow-lg shadow-black/10"
               onClick={(e) => {
                 e.stopPropagation();
                 onPlayTrack?.(track);
               }}
             >
-              <Play className="h-5 w-5 fill-current" />
-            </div>
+              <Play className="h-5 w-5 fill-current text-white" />
+            </LiquidGlass>
           </div>
 
           {(showAddToPlaylist || showDelete) && (
@@ -91,14 +107,18 @@ export default function TrackCard({
               {showAddToPlaylist && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <div
+                    <LiquidGlass
+                      blur={12}
+                      refraction={18}
+                      saturation={1.6}
+                      isolate
                       role="button"
                       tabIndex={0}
                       aria-label="Add to playlist"
-                      className="cursor-pointer rounded-full p-2 flex items-center justify-center bg-black/35 backdrop-blur-sm border border-white/15 transition-colors hover:bg-white/10 outline-none"
+                      className="flex h-10 w-10 cursor-pointer items-center justify-center bg-white/10 border border-white/25 backdrop-blur-md [--liquid-glass-rim-light:rgba(255,255,255,0.7)] transition-all outline-none hover:bg-white/20 hover:scale-105 shadow-lg shadow-black/10"
                     >
-                      <span className="material-symbols-rounded text-[24px]">playlist_add</span>
-                    </div>
+                      <span className="material-symbols-rounded text-[20px] text-white">playlist_add</span>
+                    </LiquidGlass>
                   </DropdownMenuTrigger>
                   <DropdownMenuPortal>
                     <GlassDropdownMenuContent
@@ -122,16 +142,17 @@ export default function TrackCard({
 
               {showDelete && (
                 <LiquidGlass
-                  blur={10}
+                  blur={12}
                   refraction={18}
                   saturation={1.6}
+                  isolate
                   role="button"
                   tabIndex={0}
                   aria-label="Delete from library"
                   onClick={handleDelete}
-                  className="flex h-10 w-10 cursor-pointer items-center justify-center bg-white/15 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] transition-all outline-none hover:bg-white/25 hover:scale-105 shadow-lg shadow-black/10"
+                  className="flex h-10 w-10 cursor-pointer items-center justify-center bg-white/10 border border-white/25 backdrop-blur-md [--liquid-glass-rim-light:rgba(255,255,255,0.7)] transition-all outline-none hover:bg-white/20 hover:scale-105 shadow-lg shadow-black/10"
                 >
-                  <span className="material-symbols-rounded text-[24px] text-white">delete</span>
+                  <span className="material-symbols-rounded text-[20px] text-white">delete</span>
                 </LiquidGlass>
               )}
             </div>

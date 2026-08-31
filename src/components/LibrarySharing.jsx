@@ -230,7 +230,7 @@ export function LibrarySharing({ user }) {
                     onClick={() => handleAcceptInvite(invite.id)}
                     disabled={busyId === invite.id}
                     glassVariant="liquid-refract"
-                    className="rounded-full px-4 py-1.5 text-xs font-bold bg-amber-500/90 text-black shadow-md hover:bg-amber-400 disabled:opacity-50 transition-colors"
+                    className="rounded-full px-4 py-1.5 text-xs font-bold bg-white/20 text-white border border-white/30 shadow-md hover:bg-white/30 disabled:opacity-50 transition-colors"
                   >
                     {busyId === invite.id ? "..." : "Accept"}
                   </GlassButton>

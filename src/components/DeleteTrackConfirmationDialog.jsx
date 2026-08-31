@@ -21,13 +21,13 @@ export default function DeleteTrackConfirmationDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <GlassAlertDialogContent>
+      <GlassAlertDialogContent glassVariant = "liquid-refract">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2 text-lg font-black tracking-tight text-white">
             <span className="material-symbols-rounded text-xl">delete</span>
             Delete Track
           </AlertDialogTitle>
-          <AlertDialogDescription className="text-sm font-medium leading-relaxed text-white/70">
+          <AlertDialogDescription className="text-sm font-medium leading-relaxed text-white/50">
             Are you sure you want to delete "{track.title}" from your library? This action cannot be
             undone.
           </AlertDialogDescription>
@@ -35,7 +35,7 @@ export default function DeleteTrackConfirmationDialog({
         <AlertDialogFooter className="flex flex-col gap-2 sm:flex-row">
           <AlertDialogCancel
             onClick={() => onOpenChange(false)}
-            className="flex-1 cursor-pointer rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-xs font-bold text-white/70 transition-all hover:bg-white/10 hover:text-white"
+            className="flex-1 cursor-pointer rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-xs font-bold text-white/70 transition-all hover:bg-white/10 hover:text-white"
           >
             <span className="material-symbols-rounded mr-1.5 text-sm">close</span>
             Cancel
@@ -45,7 +45,7 @@ export default function DeleteTrackConfirmationDialog({
               onConfirm();
               onOpenChange(false);
             }}
-            className="flex-1 cursor-pointer rounded-full bg-red-500/90 px-4 py-2.5 text-xs font-bold text-white transition-all hover:bg-red-500"
+            className="flex-1 cursor-pointer rounded-full bg-red-500/80 px-4 py-2.5 text-xs font-bold text-white transition-all hover:bg-red-500"
           >
             <span className="material-symbols-rounded mr-1.5 text-sm">delete</span>
             Delete

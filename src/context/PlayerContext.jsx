@@ -17,6 +17,8 @@ const PlayerTimeContext = React.createContext({ currentTime: 0 });
 
 const PlayerContext = React.createContext(null);
 
+const PlayerControlsContext = React.createContext(null);
+
 const SEEK_TOLERANCE_S = 1.5;
 
 export function PlayerProvider({ children }) {
@@ -418,6 +420,42 @@ export function PlayerProvider({ children }) {
     }
   }, [activeTrack, isRadioMode, getActiveQueue]);
 
+  const controlsValue = useMemo(
+    () => ({
+      handlePlayTrack,
+      handleSeek,
+      handleTogglePlay,
+      handleNextTrack,
+      handlePreviousTrack,
+      handleTrackEnded,
+      handleToggleRadio,
+      handleSelectRadioStation,
+      handlePlaylistPlay,
+      handleListenRemote,
+      generateRecommended,
+      getActiveQueue,
+      setVolume,
+      setIsShuffle,
+      setIsRepeat,
+      setNeedsReauth,
+      setRadioStation,
+    }),
+    [
+      handlePlayTrack,
+      handleSeek,
+      handleTogglePlay,
+      handleNextTrack,
+      handlePreviousTrack,
+      handleTrackEnded,
+      handleToggleRadio,
+      handleSelectRadioStation,
+      handlePlaylistPlay,
+      handleListenRemote,
+      generateRecommended,
+      getActiveQueue,
+    ]
+  );
+
   const value = useMemo(
     () => ({
       activeTrack,
@@ -451,18 +489,7 @@ export function PlayerProvider({ children }) {
       setCurrentTime,
       karaokeAudioElementRef,
       spatialAudio,
-      handlePlayTrack,
-      handleSeek,
-      handleTogglePlay,
-      handleNextTrack,
-      handlePreviousTrack,
-      handleTrackEnded,
-      handleToggleRadio,
-      handleSelectRadioStation,
-      handlePlaylistPlay,
-      handleListenRemote,
-      generateRecommended,
-      getActiveQueue,
+      ...controlsValue,
     }),
     [
       activeTrack,
@@ -484,18 +511,7 @@ export function PlayerProvider({ children }) {
       setCurrentTime,
       karaokeAudioElementRef,
       spatialAudio,
-      handlePlayTrack,
-      handleSeek,
-      handleTogglePlay,
-      handleNextTrack,
-      handlePreviousTrack,
-      handleTrackEnded,
-      handleToggleRadio,
-      handleSelectRadioStation,
-      handlePlaylistPlay,
-      handleListenRemote,
-      generateRecommended,
-      getActiveQueue,
+      controlsValue,
     ]
   );
 
@@ -504,20 +520,22 @@ export function PlayerProvider({ children }) {
   return (
     <PlayerContext.Provider value={value}>
       <PlayerTimeContext.Provider value={timeContextValue}>
-        <AudioPlayer
-          activeTrack={activeTrack}
-          isPlaying={isPlaying}
-          volume={volume}
-          seekTime={seekTime}
-          reloadKey={radioTick + reloadTick}
-          onTimeUpdate={setCurrentTime}
-          onDurationChange={setDuration}
-          onEnded={handleTrackEnded}
-          elementRef={karaokeAudioElementRef}
-          isRepeat={isRepeat}
-          onBufferingChange={setIsBuffering}
-        />
-        {children}
+        <PlayerControlsContext.Provider value={controlsValue}>
+          <AudioPlayer
+            activeTrack={activeTrack}
+            isPlaying={isPlaying}
+            volume={volume}
+            seekTime={seekTime}
+            reloadKey={radioTick + reloadTick}
+            onTimeUpdate={setCurrentTime}
+            onDurationChange={setDuration}
+            onEnded={handleTrackEnded}
+            elementRef={karaokeAudioElementRef}
+            isRepeat={isRepeat}
+            onBufferingChange={setIsBuffering}
+          />
+          {children}
+        </PlayerControlsContext.Provider>
       </PlayerTimeContext.Provider>
     </PlayerContext.Provider>
   );
@@ -527,6 +545,10 @@ export function usePlayer() {
   const ctx = React.useContext(PlayerContext);
   if (!ctx) throw new Error("usePlayer must be used within a PlayerProvider");
   return ctx;
+}
+
+export function usePlayerControls() {
+  return React.useContext(PlayerControlsContext) || {};
 }
 
 export function usePlayerTime() {

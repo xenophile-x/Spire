@@ -103,10 +103,3 @@ export function cleanupElementGraph(audioElement) {
     elementGraphs.delete(audioElement);
   }
 }
-
-if (typeof window !== "undefined") {
-  window.addEventListener("beforeunload", () => {
-
-
-  });
-}

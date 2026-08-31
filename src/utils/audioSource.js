@@ -5,15 +5,24 @@ const streamUrlCache = new Map();
 const blobUrlCache = new Map();
 const inflight = new Map();
 
+const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
+let tokenCache = { googleToken: "", accessToken: "", expiry: 0 };
+
 async function resolveTokens() {
+  const now = Date.now();
+  if (tokenCache.expiry > now) {
+    return { googleToken: tokenCache.googleToken, accessToken: tokenCache.accessToken };
+  }
   try {
     const {
       data: { session },
     } = await supabase.auth.getSession();
-    return {
+    const tokens = {
       googleToken: session?.provider_token || "",
       accessToken: session?.access_token || "",
     };
+    tokenCache = { ...tokens, expiry: now + TOKEN_CACHE_TTL_MS };
+    return tokens;
   } catch {
     return { googleToken: "", accessToken: "" };
   }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getOrCreateElementGraph,
   getElementGraph,
+  cleanupElementGraph,
 } from "@/utils/audioElementGraph";
 
 
@@ -37,7 +38,7 @@ export function useKaraokeRecorder() {
     starting: false,
     audioElement: null,
     musicVolume: 0.7,
-    micVolume: 2.5,
+    micVolume: 1.5,
     monitorEnabled: false,
     musicProbeTimer: null,
     voiceFilter: null,
@@ -64,7 +65,7 @@ export function useKaraokeRecorder() {
     session.monitorEnabled = enabled;
     setMonitorEnabled(enabled);
     if (session.ctx && session.monitorGain) {
-      session.monitorGain.gain.setTargetAtTime(enabled ? 0.6 : 0, session.ctx.currentTime, 0.01);
+      session.monitorGain.gain.setTargetAtTime(enabled ? 0.3 : 0, session.ctx.currentTime, 0.01);
     }
   }, []);
 
@@ -102,6 +103,8 @@ export function useKaraokeRecorder() {
 
       if (session.isFallbackCtx && session.ctx) {
         session.ctx.close().catch(() => {});
+      } else if (session.audioElement) {
+        cleanupElementGraph(session.audioElement);
       }
     };
   }, []);
@@ -173,7 +176,7 @@ export function useKaraokeRecorder() {
           // normalize input level.
           echoCancellation: { ideal: true },
           noiseSuppression: { ideal: false },
-          autoGainControl: { ideal: true },
+          autoGainControl: { ideal: false },
           channelCount: { ideal: 1 },
         },
       });
@@ -268,8 +271,8 @@ export function useKaraokeRecorder() {
 
 
       const monitorGain = ctx.createGain();
-      monitorGain.gain.value = session.monitorEnabled ? 0.6 : 0;
-      micGain.connect(monitorGain);
+      monitorGain.gain.value = session.monitorEnabled ? 0.3 : 0;
+      micSource.connect(monitorGain);
       monitorGain.connect(ctx.destination);
 
         const mimeType = pickMimeType();
@@ -436,7 +439,7 @@ export function useKaraokeRecorder() {
         stopTimer();
         session.timer = setInterval(() => {
           setElapsed(Math.floor((Date.now() - session.startedAt) / 1000));
-        }, 1000);
+        }, 100);
       } catch (err) {
         console.error("[KaraokeRecorder] Mic access error:", err);
         setRecordingError(
