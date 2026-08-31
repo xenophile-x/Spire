@@ -31,25 +31,32 @@ function createReverbBuffer(ctx, duration = 3.5, decay = 3.0) {
 
 export function getOrCreateElementGraph(audioElement) {
   let g = elementGraphs.get(audioElement);
-  if (!g) {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioCtx();
-    const musicSource = ctx.createMediaElementSource(audioElement);
 
-
-    const masterGain = ctx.createGain();
-    masterGain.gain.value = 1;
-    musicSource.connect(masterGain);
-    masterGain.connect(ctx.destination);
-    g = {
-      ctx,
-      musicSource,
-      masterGain,
-      spatial: null,
-      spatialConnected: false,
-    };
-    elementGraphs.set(audioElement, g);
+  // Reuse the existing graph unless its AudioContext is dead.
+  // Unconditionally rebuilding (old behaviour) closed the live context while
+  // music was playing, causing an audible glitch and wiping user volume state.
+  if (g && g.ctx.state !== "closed") {
+    return g;
   }
+
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AudioCtx({ latencyHint: "interactive" });
+  const musicSource = ctx.createMediaElementSource(audioElement);
+
+  const masterGain = ctx.createGain();
+  // Preserve prior volume if we're rebuilding after a closed context
+  masterGain.gain.value = g?.masterGain?.gain.value ?? 1;
+  musicSource.connect(masterGain);
+  masterGain.connect(ctx.destination);
+
+  g = {
+    ctx,
+    musicSource,
+    masterGain,
+    spatial: null,
+    spatialConnected: false,
+  };
+  elementGraphs.set(audioElement, g);
   return g;
 }
 
@@ -102,4 +109,12 @@ export function cleanupElementGraph(audioElement) {
     g.ctx.close().catch(() => {});
     elementGraphs.delete(audioElement);
   }
+}
+
+export function resetElementGraph(audioElement) {
+  const g = elementGraphs.get(audioElement);
+  if (g) {
+    g.ctx.close().catch(() => {});
+  }
+  elementGraphs.delete(audioElement);
 }

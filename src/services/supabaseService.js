@@ -150,7 +150,13 @@ export const updateTrackArtwork = async (trackId, artworkUrl) => {
       { track_id: trackId, artwork_url: artworkUrl },
       { onConflict: "track_id" }
     );
-  if (error) throw error;
+  if (error) {
+    if (error.code === '42P10') {
+      console.warn("[Supabase] track_metadata missing primary key — run migration 20260831000000_ensure_track_metadata_pkey.sql");
+      return;
+    }
+    throw error;
+  }
 };
 
 

@@ -227,7 +227,6 @@ export default function AudioPlayer({
   const handleTimeUpdate = useCallback(() => {
     const audio = audioRef.current;
     if (!audio || !onTimeUpdate) return;
-    if (audio.readyState === 0) return;
     try {
       onTimeUpdate(audio.currentTime);
       updateStallTimer(audio);
@@ -288,6 +287,11 @@ export default function AudioPlayer({
       crossOrigin="anonymous"
       onTimeUpdate={handleTimeUpdate}
       onLoadedMetadata={() => {
+        if (audioRef.current && onDurationChange) {
+          onDurationChange(audioRef.current.duration);
+        }
+      }}
+      onDurationChange={() => {
         if (audioRef.current && onDurationChange) {
           onDurationChange(audioRef.current.duration);
         }

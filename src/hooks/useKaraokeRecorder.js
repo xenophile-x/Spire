@@ -37,13 +37,17 @@ export function useKaraokeRecorder() {
     previewUrl: null,
     starting: false,
     audioElement: null,
-    musicVolume: 0.7,
-    micVolume: 1.5,
+    musicVolume: 1.0,
+    micVolume: 1.8,
     monitorEnabled: false,
     musicProbeTimer: null,
     voiceFilter: null,
     voiceCompressor: null,
     voiceMakeup: null,
+    // Sidechain ducking
+    duckGain: null,
+    duckAnalyser: null,
+    duckInterval: null,
   });
 
 
@@ -91,6 +95,12 @@ export function useKaraokeRecorder() {
     return () => {
       if (session.timer) clearInterval(session.timer);
       if (session.musicProbeTimer) clearTimeout(session.musicProbeTimer);
+      if (session.duckInterval) {
+        clearInterval(session.duckInterval);
+        session.duckInterval = null;
+      }
+      try { session.duckGain?.disconnect(); } catch {}
+      try { session.duckAnalyser?.disconnect(); } catch {}
       if (session.recorder && session.recorder.state !== "inactive") {
         try {
           session.recorder.stop();
@@ -164,9 +174,26 @@ export function useKaraokeRecorder() {
         session.voiceMakeup.disconnect();
         session.voiceMakeup = null;
       }
+      // Tear down any previous ducking nodes before restarting
+      if (session.duckInterval) {
+        clearInterval(session.duckInterval);
+        session.duckInterval = null;
+      }
+      try { session.duckGain?.disconnect(); } catch {}
+      try { session.duckAnalyser?.disconnect(); } catch {}
+      session.duckGain = null;
+      session.duckAnalyser = null;
       if (session.micStream) {
         session.micStream.getTracks().forEach((track) => track.stop());
         session.micStream = null;
+      }
+
+      // Bug C: browser echo-cancellation uses the speaker output as its AEC reference,
+      // but Web Audio bypasses the expected speaker path — so AEC can over-suppress
+      // the mic when playing music through speakers (non-headphone use).
+      // We can't reliably detect headphones, so surface a one-liner hint instead.
+      if (!session.monitorEnabled) {
+        setRecordingWarning("For clearest results, use headphones while recording.");
       }
 
       const micStream = await navigator.mediaDevices.getUserMedia({
@@ -196,6 +223,8 @@ export function useKaraokeRecorder() {
       let musicSource = null;
       let isFallbackCtx = false;
       try {
+        // Do NOT reset the graph — reuse the live AudioContext so music
+        // keeps playing without a glitch or dropout when recording starts.
         const g = getOrCreateElementGraph(audioElement);
         ctx = g.ctx;
         musicSource = g.musicSource;
@@ -209,7 +238,7 @@ export function useKaraokeRecorder() {
           err
         );
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        ctx = new AudioCtx();
+        ctx = new AudioCtx({ latencyHint: "interactive" });
         isFallbackCtx = true;
         if (ctx.state === "suspended") {
           await ctx.resume();
@@ -236,9 +265,17 @@ export function useKaraokeRecorder() {
 
       const musicGain = ctx.createGain();
       musicGain.gain.value = session.musicVolume;
+
+      // Sidechain ducking: music → duckGain → compressor.
+      // The duckGain is driven down automatically when the mic detects singing,
+      // so the vocal sits on top of the mix regardless of the fixed musicVolume.
+      const duckGain = ctx.createGain();
+      duckGain.gain.value = 1;
+
       if (musicSource) {
         musicSource.connect(musicGain);
-        musicGain.connect(compressor);
+        musicGain.connect(duckGain); // route through ducker instead of direct to compressor
+        duckGain.connect(compressor);
       }
 
       // Dedicated voice bus: rumble filter -> user gain -> gentle compression
@@ -274,6 +311,35 @@ export function useKaraokeRecorder() {
       monitorGain.gain.value = session.monitorEnabled ? 0.3 : 0;
       micSource.connect(monitorGain);
       monitorGain.connect(ctx.destination);
+
+      // Sidechain ducking poll: tap the mic to read RMS level every 50 ms and
+      // drive duckGain down when singing is detected. This keeps the vocal on
+      // top of the mix without manual balance adjustment.
+      const duckAnalyser = ctx.createAnalyser();
+      duckAnalyser.fftSize = 256;
+      micSource.connect(duckAnalyser); // passive tap — doesn't affect signal path
+
+      const DUCK_AMOUNT = 0.45;  // music level while singing (0–1; lower = more ducking)
+      const DUCK_ATTACK  = 0.08; // seconds to duck down
+      const DUCK_RELEASE = 0.4;  // seconds to recover
+      const duckData = new Uint8Array(duckAnalyser.frequencyBinCount);
+
+      session.duckInterval = setInterval(() => {
+        if (ctx.state === "closed") return;
+        duckAnalyser.getByteTimeDomainData(duckData);
+        let sum = 0;
+        for (let i = 0; i < duckData.length; i++) {
+          const v = (duckData[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / duckData.length);
+        const singing = rms > 0.03; // tune threshold to taste
+        const target = singing ? DUCK_AMOUNT : 1;
+        duckGain.gain.setTargetAtTime(target, ctx.currentTime, singing ? DUCK_ATTACK : DUCK_RELEASE);
+      }, 50);
+
+      session.duckGain = duckGain;
+      session.duckAnalyser = duckAnalyser;
 
         const mimeType = pickMimeType();
         const recorder = mimeType
@@ -313,6 +379,15 @@ export function useKaraokeRecorder() {
           try {
             voiceMakeup.disconnect();
           } catch {}
+          // Sidechain ducking cleanup
+          if (session.duckInterval) {
+            clearInterval(session.duckInterval);
+            session.duckInterval = null;
+          }
+          try { session.duckGain?.disconnect(); } catch {}
+          try { session.duckAnalyser?.disconnect(); } catch {}
+          session.duckGain = null;
+          session.duckAnalyser = null;
 
 
           const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
@@ -383,6 +458,15 @@ export function useKaraokeRecorder() {
           try { voiceFilter.disconnect(); } catch {}
           try { voiceCompressor.disconnect(); } catch {}
           try { voiceMakeup.disconnect(); } catch {}
+          // Sidechain ducking cleanup
+          if (session.duckInterval) {
+            clearInterval(session.duckInterval);
+            session.duckInterval = null;
+          }
+          try { session.duckGain?.disconnect(); } catch {}
+          try { session.duckAnalyser?.disconnect(); } catch {}
+          session.duckGain = null;
+          session.duckAnalyser = null;
           setIsRecording(false);
           stopTimer();
         };

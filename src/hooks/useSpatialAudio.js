@@ -16,35 +16,27 @@ export function useSpatialAudio(audioRef) {
     const el = audioRef.current;
     if (!el) return;
 
-    let g;
-    try {
-      g = getOrCreateElementGraph(el);
-    } catch {
-      return;
-    }
-
-
-    if (g.ctx.state === "suspended") {
-      g.ctx.resume().catch(() => {});
-    }
-
     const anyEffect = is8DActive || isReverbActive || isNightcoreActive;
 
     if (!anyEffect) {
-
-
-      g.masterGain.gain.setTargetAtTime(1, g.ctx.currentTime, 0.1);
-      if (g.spatialConnected && g.spatial) {
-        try {
-          g.spatial.panner.disconnect(g.ctx.destination);
-        } catch {}
-        g.spatialConnected = false;
+      const g = getElementGraph(el);
+      if (g) {
+        if (g.ctx.state === "suspended") {
+          g.ctx.resume().catch(() => {});
+        }
+        g.masterGain.gain.setTargetAtTime(1, g.ctx.currentTime, 0.1);
+        if (g.spatialConnected && g.spatial) {
+          try {
+            g.spatial.panner.disconnect(g.ctx.destination);
+          } catch {}
+          g.spatialConnected = false;
+        }
       }
+      
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
       }
-
 
       if (el) {
         el.playbackRate = 1;
@@ -52,6 +44,17 @@ export function useSpatialAudio(audioRef) {
         el.webkitPreservesPitch = true;
       }
       return;
+    }
+
+    let g;
+    try {
+      g = getOrCreateElementGraph(el);
+    } catch {
+      return;
+    }
+
+    if (g.ctx.state === "suspended") {
+      g.ctx.resume().catch(() => {});
     }
 
     try {

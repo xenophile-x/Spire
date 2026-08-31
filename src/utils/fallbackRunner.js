@@ -1,7 +1,4 @@
-// Chain of Responsibility runner for keyless metadata APIs.
-// Providers run in array order; the first non-null result wins. A provider
-// throwing (network error, bad JSON, abort) is logged and skipped — never
-// fatal — so callers get one code path instead of nested try/catch ladders.
+
 export async function runFallbackChain(
   targetName,
   providers

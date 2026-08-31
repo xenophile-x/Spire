@@ -39,7 +39,7 @@ export function PlayerProvider({ children }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [seekTime, setSeekTime] = useState(null);
-  const [volume, setVolume] = useState(70);
+  const [volume, setVolume] = useState(85);
   const karaokeAudioElementRef = useRef(null);
   const spatialAudio = useSpatialAudio(karaokeAudioElementRef);
   const [isShuffle, setIsShuffle] = useState(false);
