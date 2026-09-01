@@ -3,7 +3,6 @@ import { parseLRC } from "@/utils/lyricsParser";
 import { getStreamTrackUrl } from "@/utils/audioSource";
 
 const STALL_TIMEOUT_MS = 8000;
-const BUFFER_AHEAD_SECONDS = 30;
 
 export default function AudioPlayer({
   activeTrack,
@@ -24,7 +23,6 @@ export default function AudioPlayer({
   const loadedTrackIdRef = useRef(null);
   const stallTimerRef = useRef(null);
   const lastProgressRef = useRef(0);
-  const isSeekingRef = useRef(false);
   const pendingSeekRef = useRef(null);
 
   const latestPropsRef = useRef({ seekTime, isPlaying });
@@ -95,7 +93,6 @@ export default function AudioPlayer({
 
       const { seekTime: pendingSeek, isPlaying: shouldPlay } = latestPropsRef.current;
       if (typeof pendingSeek === "number" && !isNaN(pendingSeek) && pendingSeek > 0) {
-        isSeekingRef.current = true;
         pendingSeekRef.current = pendingSeek;
         try {
           audio.currentTime = pendingSeek;
@@ -163,15 +160,22 @@ export default function AudioPlayer({
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (
-      audio &&
-      typeof seekTime === "number" &&
-      !isNaN(seekTime) &&
-      Math.abs(audio.currentTime - seekTime) > 0.3
-    ) {
-      isSeekingRef.current = true;
+    if (!audio || typeof seekTime !== "number" || isNaN(seekTime)) return;
+    if (Math.abs(audio.currentTime - seekTime) <= 0.3) return;
+
+    if (audio.readyState > 0) {
+      pendingSeekRef.current = null;
+      try {
+        if (typeof audio.fastSeek === "function") {
+          audio.fastSeek(seekTime);
+        } else {
+          audio.currentTime = seekTime;
+        }
+      } catch {
+        audio.currentTime = seekTime;
+      }
+    } else {
       pendingSeekRef.current = seekTime;
-      audio.currentTime = seekTime;
     }
   }, [seekTime]);
 
@@ -208,18 +212,6 @@ export default function AudioPlayer({
     }
   }, [onTimeUpdate, updateStallTimer]);
 
-  const handleProgress = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (isSeekingRef.current && audio.buffered.length > 0) {
-      const bufferedEnd = audio.buffered.end(audio.buffered.length - 1);
-      if (bufferedEnd - audio.currentTime >= BUFFER_AHEAD_SECONDS) {
-        isSeekingRef.current = false;
-        pendingSeekRef.current = null;
-      }
-    }
-  }, []);
-
   const handleWaiting = useCallback(() => {
     onBufferingChange?.(true);
   }, [onBufferingChange]);
@@ -227,12 +219,30 @@ export default function AudioPlayer({
   const handleCanPlay = useCallback(() => {
     onBufferingChange?.(false);
     const audio = audioRef.current;
-    if (audio && isSeekingRef.current && pendingSeekRef.current !== null) {
+    if (audio && pendingSeekRef.current !== null && audio.readyState > 0) {
+      const target = pendingSeekRef.current;
+      pendingSeekRef.current = null;
       try {
-        audio.currentTime = pendingSeekRef.current;
-      } catch {}
+        if (typeof audio.fastSeek === "function") {
+          audio.fastSeek(target);
+        } else {
+          audio.currentTime = target;
+        }
+      } catch {
+        audio.currentTime = target;
+      }
     }
   }, [onBufferingChange]);
+
+  const handleSeeking = useCallback(() => {
+    onBufferingChange?.(true);
+  }, [onBufferingChange]);
+
+  const handleSeeked = useCallback(() => {
+    onBufferingChange?.(false);
+    const audio = audioRef.current;
+    if (audio) updateStallTimer(audio);
+  }, [onBufferingChange, updateStallTimer]);
 
   const handleEnded = useCallback(() => {
     clearStallTimer();
@@ -256,8 +266,17 @@ export default function AudioPlayer({
       crossOrigin="anonymous"
       onTimeUpdate={handleTimeUpdate}
       onLoadedMetadata={() => {
-        if (audioRef.current && onDurationChange) {
-          onDurationChange(audioRef.current.duration);
+        if (audioRef.current) {
+          if (onDurationChange) {
+            onDurationChange(audioRef.current.duration);
+          }
+          if (pendingSeekRef.current !== null) {
+            const target = pendingSeekRef.current;
+            pendingSeekRef.current = null;
+            try {
+              audioRef.current.currentTime = target;
+            } catch {}
+          }
         }
       }}
       onDurationChange={() => {
@@ -266,9 +285,10 @@ export default function AudioPlayer({
         }
       }}
       onEnded={handleEnded}
-      onProgress={handleProgress}
       onWaiting={handleWaiting}
       onCanPlay={handleCanPlay}
+      onSeeking={handleSeeking}
+      onSeeked={handleSeeked}
       onError={(e) => {
         const audio = e.target;
         console.error("[AudioPlayer] Audio error:", audio.error?.message || audio.error?.code);
