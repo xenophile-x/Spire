@@ -217,7 +217,7 @@ export function LibrarySharing({ user }) {
             saturation={1.6}
             className="rounded-2xl p-3.5 flex flex-col gap-2 border border-white/20 bg-white/10 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] shadow-lg shadow-black/10"
           >
-            <span className="text-[11px] font-bold tracking-wider uppercase text-amber-300">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-white">
               Received Access Invites
             </span>
             {incomingInvites.map((invite) => (

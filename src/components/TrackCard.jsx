@@ -80,11 +80,7 @@ export default function TrackCard({
                 <span className={`material-symbols-rounded text-[11px] leading-none text-white ${track.sharedByAvatar ? 'hidden' : 'inline-block'}`}>
                   person
                 </span>
-                {track.sharedBy && (
-                  <span className="text-[10px] font-semibold text-white/90 truncate max-w-[80px]">
-                    {track.sharedBy}
-                  </span>
-                )}
+
               </LiquidGlass>
             </div>
           )}
