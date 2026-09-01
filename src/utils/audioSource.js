@@ -1,31 +1,42 @@
 import { supabase } from "@/lib/supabaseClient";
+import { getDriveAccessToken } from "@/utils/auth";
 import { getValidDriveToken } from "@/utils/driveApi";
 
-const CACHE_LIMIT = 20;
+const CACHE_LIMIT = 30;
 const streamUrlCache = new Map();
 const blobUrlCache = new Map();
 const inflight = new Map();
 
-const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
+const TOKEN_CACHE_TTL_MS = 10 * 60 * 1000;
 let tokenCache = { googleToken: "", accessToken: "", expiry: 0 };
+
+supabase.auth.onAuthStateChange((_event, session) => {
+  if (session?.access_token) {
+    tokenCache = {
+      googleToken: getDriveAccessToken() || session.provider_token || "",
+      accessToken: session.access_token,
+      expiry: Date.now() + TOKEN_CACHE_TTL_MS,
+    };
+  }
+});
 
 async function resolveTokens() {
   const now = Date.now();
-  if (tokenCache.expiry > now) {
-    return { googleToken: tokenCache.googleToken, accessToken: tokenCache.accessToken };
+  if (tokenCache.expiry > now && tokenCache.accessToken) {
+    return { googleToken: tokenCache.googleToken || getDriveAccessToken() || "", accessToken: tokenCache.accessToken };
   }
   try {
     const {
       data: { session },
     } = await supabase.auth.getSession();
     const tokens = {
-      googleToken: session?.provider_token || "",
+      googleToken: getDriveAccessToken() || session?.provider_token || "",
       accessToken: session?.access_token || "",
     };
     tokenCache = { ...tokens, expiry: now + TOKEN_CACHE_TTL_MS };
     return tokens;
   } catch {
-    return { googleToken: "", accessToken: "" };
+    return { googleToken: getDriveAccessToken() || "", accessToken: "" };
   }
 }
 

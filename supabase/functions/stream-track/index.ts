@@ -32,6 +32,35 @@ type TokenRow = {
   expires_at: string | null;
 };
 
+type CachedTrack = {
+  drive_file_id: string;
+  user_id: string;
+  cachedAt: number;
+};
+
+// In-memory cache across warm edge function invocations
+const trackCache = new Map<string, CachedTrack>();
+const tokenMemoryCache = new Map<string, TokenRow & { cachedAt: number }>();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function decodeJwtPayload(token: string): { sub?: string; email?: string; exp?: number } | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
 async function refreshOwnerToken(
   admin: SupabaseClient,
   userId: string,
@@ -69,6 +98,14 @@ async function refreshOwnerToken(
 
   const expiresIn: number = typeof data.expires_in === "number" ? data.expires_in : 3600;
   const newExpiry = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+  const updatedTokenRow = {
+    access_token: newAccessToken,
+    expires_at: newExpiry,
+    refresh_token: data.refresh_token || tokenRow.refresh_token,
+  };
+
+  tokenMemoryCache.set(userId, { ...updatedTokenRow, cachedAt: Date.now() });
 
   await admin
     .from("google_oauth_tokens")
@@ -124,48 +161,56 @@ Deno.serve(async (req) => {
     );
 
     let requester: { id: string; email: string | null } | null = null;
-    // Audio element can't send Authorization header, so also accept ?token= JWT
-    // (appended by getStreamTrackUrl) or ?apikey=. The sb_publishable_ prefix is
-    // the anon publishable key — not a user JWT — ignore it like the header case.
-    let authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    let rawJwt = "";
+
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ") && !authHeader.startsWith("Bearer sb_")) {
+      rawJwt = authHeader.slice(7).trim();
+    } else {
       const tokenParam = url.searchParams.get("token") || url.searchParams.get("access_token") || url.searchParams.get("apikey") || "";
       if (tokenParam && !tokenParam.startsWith("sb_") && tokenParam.split(".").length === 3) {
-        authHeader = `Bearer ${tokenParam}`;
+        rawJwt = tokenParam;
       }
     }
-    if (authHeader && !authHeader.startsWith("Bearer sb_")) {
-      const supabaseAuth = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_ANON_KEY")!,
-        { global: { headers: { Authorization: authHeader } } }
-      );
-      const { data } = await supabaseAuth.auth.getUser();
-      if (data?.user) {
+
+    if (rawJwt) {
+      const payload = decodeJwtPayload(rawJwt);
+      if (payload?.sub && (!payload.exp || payload.exp * 1000 > Date.now())) {
         requester = {
-          id: data.user.id,
-          email: data.user.email ?? null,
+          id: payload.sub,
+          email: payload.email ?? null,
         };
+      } else {
+        const supabaseAuth = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_ANON_KEY")!,
+          { global: { headers: { Authorization: `Bearer ${rawJwt}` } } }
+        );
+        const { data } = await supabaseAuth.auth.getUser();
+        if (data?.user) {
+          requester = {
+            id: data.user.id,
+            email: data.user.email ?? null,
+          };
+        }
       }
     }
 
     let track: { drive_file_id: string; user_id: string } | null = null;
-
-    const byId = await supabaseAdmin
-      .from("user_tracks")
-      .select("drive_file_id, user_id")
-      .eq("id", trackId)
-      .maybeSingle();
-
-    if (byId.data) {
-      track = byId.data;
+    const cachedTrack = trackCache.get(trackId);
+    if (cachedTrack && Date.now() - cachedTrack.cachedAt < CACHE_TTL_MS) {
+      track = { drive_file_id: cachedTrack.drive_file_id, user_id: cachedTrack.user_id };
     } else {
-      const byDriveFile = await supabaseAdmin
+      const { data: trackData } = await supabaseAdmin
         .from("user_tracks")
         .select("drive_file_id, user_id")
-        .eq("drive_file_id", trackId)
+        .or(`id.eq.${trackId},drive_file_id.eq.${trackId}`)
         .maybeSingle();
-      track = byDriveFile.data ?? null;
+
+      if (trackData) {
+        track = trackData;
+        trackCache.set(trackId, { ...trackData, cachedAt: Date.now() });
+      }
     }
 
     if (!track) {
@@ -221,11 +266,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: tokenData } = await supabaseAdmin
-      .from("google_oauth_tokens")
-      .select("access_token, refresh_token, expires_at")
-      .eq("user_id", track.user_id)
-      .maybeSingle();
+    let tokenData: TokenRow | null = null;
+    const cachedToken = tokenMemoryCache.get(track.user_id);
+    if (cachedToken && !isTokenExpired(cachedToken)) {
+      tokenData = cachedToken;
+    } else {
+      const { data: fetchedToken } = await supabaseAdmin
+        .from("google_oauth_tokens")
+        .select("access_token, refresh_token, expires_at")
+        .eq("user_id", track.user_id)
+        .maybeSingle();
+
+      if (fetchedToken) {
+        tokenData = fetchedToken;
+        tokenMemoryCache.set(track.user_id, { ...fetchedToken, cachedAt: Date.now() });
+      }
+    }
 
     if (!tokenData?.access_token) {
       console.error("No access token for user:", track.user_id);
@@ -315,8 +371,7 @@ function streamResponse(driveRes: Response, cors: Record<string, string>): Respo
     ...cors,
     "Content-Type": contentType,
     "Accept-Ranges": acceptRanges,
-    // Prevent caching of partial content to avoid browser reusing initial metadata probe
-    "Cache-Control": isPartial ? "private, max-age=0, must-revalidate" : "public, max-age=3600, immutable",
+    "Cache-Control": isPartial ? "private, max-age=3600, stale-while-revalidate=86400" : "public, max-age=3600, immutable",
   };
   if (contentLength) headers["Content-Length"] = contentLength;
   if (contentRange) headers["Content-Range"] = contentRange;
