@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
+import { getValidDriveToken } from "@/utils/driveApi";
 
-const CACHE_LIMIT = 10;
+const CACHE_LIMIT = 20;
 const streamUrlCache = new Map();
 const blobUrlCache = new Map();
 const inflight = new Map();
@@ -88,8 +89,13 @@ export async function getAudioObjectUrl(driveId) {
   return promise;
 }
 
-export async function getStreamTrackUrl(driveId) {
+export async function getStreamTrackUrl(driveId, track = null) {
   if (!driveId) throw new Error("Missing Drive file id");
+
+  // Instant hit if already fetched as a blob URL
+  if (blobUrlCache.has(driveId)) {
+    return blobUrlCache.get(driveId);
+  }
 
   // Audio element GET can't send Authorization header, so embed the
   // Supabase JWT as ?token= — stream-track reads it as fallback.
@@ -102,7 +108,6 @@ export async function getStreamTrackUrl(driveId) {
   if (cached) return cached;
 
   streamUrlCache.set(cacheKey, url);
-  // Also keep base key for preload dedupe
   if (!streamUrlCache.has(driveId)) streamUrlCache.set(driveId, url);
   while (streamUrlCache.size > CACHE_LIMIT * 2) {
     const oldestKey = streamUrlCache.keys().next().value;
@@ -112,18 +117,27 @@ export async function getStreamTrackUrl(driveId) {
   return url;
 }
 
-export function preloadAudio(driveId) {
+export function preloadAudio(driveId, track = null) {
   if (!driveId || streamUrlCache.has(driveId) || inflight.has(driveId)) return;
-  getStreamTrackUrl(driveId).catch(() => {});
+  getStreamTrackUrl(driveId, track).catch(() => {});
 }
 
-export function preloadAudioRange(driveId, startByte = 0, endByte = 1024 * 1024) {
+export function preloadAudioRange(driveId, startByte = 0, endByte = 2 * 1024 * 1024, track = null) {
   if (!driveId) return;
-  getStreamTrackUrl(driveId).then((url) => {
+  getStreamTrackUrl(driveId, track).then((url) => {
     if (!url) return;
     const rangeHeader = `bytes=${startByte}-${endByte}`;
-    fetch(url, { method: "HEAD", headers: { Range: rangeHeader } }).catch(() => {});
+    // Use GET (not HEAD) so the browser actually downloads and caches the audio bytes.
+    // We read and discard the response body to ensure the full range is fetched.
+    fetch(url, { headers: { Range: rangeHeader } })
+      .then((res) => res.ok && res.arrayBuffer())
+      .catch(() => {});
   }).catch(() => {});
+}
+
+export function preloadFullTrack(driveId, track = null) {
+  if (!driveId || blobUrlCache.has(driveId) || inflight.has(driveId)) return;
+  getAudioObjectUrl(driveId).catch(() => {});
 }
 
 export function revokeAllAudioUrls() {

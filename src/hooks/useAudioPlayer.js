@@ -19,7 +19,7 @@ export function useAudioPlayer({ onEnded } = {}) {
 
   useEffect(() => {
     const audio = new Audio();
-    audio.preload = "metadata";
+    audio.preload = "auto";
     audio.crossOrigin = "anonymous";
     audioRef.current = audio;
 
@@ -110,7 +110,7 @@ export function useAudioPlayer({ onEnded } = {}) {
         if (direct) {
           url = direct;
         } else if (driveId) {
-          url = await getStreamTrackUrl(driveId);
+          url = await getStreamTrackUrl(driveId, track);
         } else {
           throw new Error("No audio source available for this track.");
         }

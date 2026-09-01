@@ -74,7 +74,7 @@ export default function AudioPlayer({
 
       if (!audioUrl && driveId) {
         try {
-          audioUrl = await getStreamTrackUrl(driveId);
+          audioUrl = await getStreamTrackUrl(driveId, activeTrack);
         } catch (err) {
           console.error("[AudioPlayer] Failed to get stream URL:", err);
           if (isMounted && loadTokenRef.current === token) {
@@ -92,36 +92,6 @@ export default function AudioPlayer({
       lastProgressRef.current = 0;
       onBufferingChange?.(true);
       if (onDurationChange) onDurationChange(0);
-
-      const waitForReady = () =>
-        new Promise((resolve, reject) => {
-          const onReady = () => {
-            cleanup();
-            resolve();
-          };
-          const onError = () => {
-            cleanup();
-            reject(new Error("Audio source failed to load"));
-          };
-          const cleanup = () => {
-            audio.removeEventListener("canplay", onReady);
-            audio.removeEventListener("error", onError);
-          };
-          audio.addEventListener("canplay", onReady);
-          audio.addEventListener("error", onError);
-        });
-
-      try {
-        await waitForReady();
-      } catch (err) {
-        if (isMounted && loadTokenRef.current === token) {
-          console.error("[AudioPlayer] Source failed to load:", err);
-          onBufferingChange?.(false);
-        }
-        return;
-      }
-
-      if (!isMounted || loadTokenRef.current !== token) return;
 
       const { seekTime: pendingSeek, isPlaying: shouldPlay } = latestPropsRef.current;
       if (typeof pendingSeek === "number" && !isNaN(pendingSeek) && pendingSeek > 0) {
@@ -142,7 +112,6 @@ export default function AudioPlayer({
           });
         }
       }
-      onBufferingChange?.(false);
     }
 
     loadAudioSource();
@@ -306,7 +275,7 @@ export default function AudioPlayer({
         onBufferingChange?.(false);
         clearStallTimer();
       }}
-      preload="metadata"
+      preload="auto"
       className="hidden"
     />
   );

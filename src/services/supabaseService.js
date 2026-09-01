@@ -22,6 +22,7 @@ export const getUserLibrary = async (userId) => {
     .from("user_tracks")
     .select(`
       id,
+      user_id,
       track_id,
       drive_file_id,
       uploaded_filename,

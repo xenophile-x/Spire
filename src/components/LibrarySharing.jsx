@@ -226,22 +226,22 @@ export function LibrarySharing({ user }) {
                   <strong className="text-white">{invite.users?.full_name || invite.users?.email}</strong> invited you to their library.
                 </span>
                 <div className="flex items-center gap-2 shrink-0">
-                  <GlassButton
+                  <button
+                    type="button"
                     onClick={() => handleAcceptInvite(invite.id)}
                     disabled={busyId === invite.id}
-                    glassVariant="liquid-refract"
-                    className="rounded-full px-4 py-1.5 text-xs font-bold bg-white/20 text-white border border-white/30 shadow-md hover:bg-white/30 disabled:opacity-50 transition-colors"
+                    className="rounded-full px-4 py-1.5 text-xs font-bold bg-transparent text-white border border-white/30 hover:bg-white/10 disabled:opacity-50 transition-colors cursor-pointer"
                   >
                     {busyId === invite.id ? "..." : "Accept"}
-                  </GlassButton>
-                  <GlassButton
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleRemoveShare(invite.id)}
                     disabled={busyId === invite.id}
-                    glassVariant="liquid-refract"
-                    className="rounded-full px-3 py-1 text-xs font-medium text-white/70 hover:bg-white/10 disabled:opacity-50 transition-colors"
+                    className="rounded-full px-3 py-1 text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 disabled:opacity-50 transition-colors cursor-pointer"
                   >
                     Decline
-                  </GlassButton>
+                  </button>
                 </div>
               </div>
             ))}
@@ -308,8 +308,8 @@ export function LibrarySharing({ user }) {
               Libraries Accessible To You
             </span>
             {acceptedLibraries.map((lib) => (
-              <LiquidGlass key={lib.id} className="flex items-center justify-between text-xs py-2.5 px-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 [--liquid-glass-rim-width:0.5px]">
-                <span className="text-emerald-200 font-medium truncate">{lib.users?.full_name || lib.users?.email}'s Library</span>
+              <LiquidGlass key={lib.id} className="flex items-center justify-between text-xs py-2.5 px-3 rounded-xl border border-white/10 bg-transparent [--liquid-glass-rim-width:0.5px]">
+                <span className="text-white font-medium truncate">{lib.users?.full_name || lib.users?.email}'s Library</span>
               </LiquidGlass>
             ))}
           </div>

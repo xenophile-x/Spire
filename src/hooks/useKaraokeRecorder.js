@@ -312,34 +312,6 @@ export function useKaraokeRecorder() {
       micSource.connect(monitorGain);
       monitorGain.connect(ctx.destination);
 
-      // Sidechain ducking poll: tap the mic to read RMS level every 50 ms and
-      // drive duckGain down when singing is detected. This keeps the vocal on
-      // top of the mix without manual balance adjustment.
-      const duckAnalyser = ctx.createAnalyser();
-      duckAnalyser.fftSize = 256;
-      micSource.connect(duckAnalyser); // passive tap — doesn't affect signal path
-
-      const DUCK_AMOUNT = 0.45;  // music level while singing (0–1; lower = more ducking)
-      const DUCK_ATTACK  = 0.08; // seconds to duck down
-      const DUCK_RELEASE = 0.4;  // seconds to recover
-      const duckData = new Uint8Array(duckAnalyser.frequencyBinCount);
-
-      session.duckInterval = setInterval(() => {
-        if (ctx.state === "closed") return;
-        duckAnalyser.getByteTimeDomainData(duckData);
-        let sum = 0;
-        for (let i = 0; i < duckData.length; i++) {
-          const v = (duckData[i] - 128) / 128;
-          sum += v * v;
-        }
-        const rms = Math.sqrt(sum / duckData.length);
-        const singing = rms > 0.03; // tune threshold to taste
-        const target = singing ? DUCK_AMOUNT : 1;
-        duckGain.gain.setTargetAtTime(target, ctx.currentTime, singing ? DUCK_ATTACK : DUCK_RELEASE);
-      }, 50);
-
-      session.duckGain = duckGain;
-      session.duckAnalyser = duckAnalyser;
 
         const mimeType = pickMimeType();
         const recorder = mimeType

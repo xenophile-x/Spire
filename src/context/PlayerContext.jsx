@@ -102,6 +102,7 @@ export function PlayerProvider({ children }) {
         synced_lyrics: track.synced_lyrics || track.syncedLyrics || "",
         driveFileId: track.drive_file_id || track.driveFileId,
         genre: track.genre || track.primary_genre || "Unknown",
+        user_id: track.user_id || track.userId || track.owner_id || user?.id,
       });
       setActivePlaylistId(playlistId);
       setActiveArtist(artist || null);
@@ -413,10 +414,23 @@ export function PlayerProvider({ children }) {
     if (queue.length === 0) return;
     const idx = queue.findIndex((t) => t.id === activeTrack.id);
     if (idx < 0) return;
+
+    // Preload next track: resolve URL + download first 2MB (~10+ seconds of audio)
     const next = queue[(idx + 1) % queue.length];
-    preloadAudio(next?.driveFileId || next?.drive_file_id);
-    if (next?.driveFileId || next?.drive_file_id) {
-      preloadAudioRange(next.driveFileId || next.drive_file_id, 0, 512 * 1024);
+    const nextDriveId = next?.driveFileId || next?.drive_file_id || next?.drive_id;
+    if (nextDriveId) {
+      preloadAudio(nextDriveId, next);
+      preloadAudioRange(nextDriveId, 0, 2 * 1024 * 1024, next);
+    }
+
+    // Preload next-next track: resolve URL + download first 512KB
+    if (queue.length > 2) {
+      const nextNext = queue[(idx + 2) % queue.length];
+      const nnDriveId = nextNext?.driveFileId || nextNext?.drive_file_id || nextNext?.drive_id;
+      if (nnDriveId) {
+        preloadAudio(nnDriveId, nextNext);
+        preloadAudioRange(nnDriveId, 0, 512 * 1024, nextNext);
+      }
     }
   }, [activeTrack, isRadioMode, getActiveQueue]);
 
