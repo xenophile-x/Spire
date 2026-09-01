@@ -37,7 +37,6 @@ const upgradeImageUrl = (url) => {
 
 
 const VIDEO_WALLPAPERS = [
-
   "https://videos.pexels.com/video-files/9714261/9714261-uhd_3840_2160_30fps.mp4",
   "https://videos.pexels.com/video-files/11466213/11466213-uhd_3840_2160_25fps.mp4",
   "https://videos.pexels.com/video-files/18209572/18209572-uhd_4096_2160_30fps.mp4",
@@ -59,7 +58,6 @@ const VIDEO_WALLPAPERS = [
   "https://videos.pexels.com/video-files/34135318/14473578_3840_2160_30fps.mp4",
   "https://videos.pexels.com/video-files/8822944/8822944-hd_3840_2160_30fps.mp4",
 
-
   "https://videos.pexels.com/video-files/34857315/14772713_1920_1080_60fps.mp4",
   "https://videos.pexels.com/video-files/17848790/17848790-hd_1920_1080_30fps.mp4",
   "https://videos.pexels.com/video-files/16469505/16469505-hd_1920_1080_30fps.mp4",
@@ -77,7 +75,6 @@ const VIDEO_WALLPAPERS = [
   "https://videos.pexels.com/video-files/33924272/14396264_1920_1080_60fps.mp4",
   "https://videos.pexels.com/video-files/1674470/1674470-hd_1920_1080_24fps.mp4",
 ];
-
 
 const WALLPAPERS = [
   ...VIDEO_WALLPAPERS,
@@ -232,7 +229,7 @@ export default function AppLayout() {
         setBgMediaType(user.user_metadata.bg_media_type);
       }
     }
-  }, [user?.user_metadata?.is_using_preset, user?.user_metadata?.bg_drive_id, user?.user_metadata?.wallpaper_index, user?.user_metadata?.bg_media_type]);
+  }, [user?.id]);
 
 
   const handleThemeToggle = useCallback(() => {
@@ -245,44 +242,51 @@ export default function AppLayout() {
     setIsUsingPreset(true);
     setWallpaperIndex(nextIndex);
 
-    supabase.auth
-      .updateUser({
-        data: {
-          is_using_preset: true,
-          wallpaper_index: nextIndex,
-        },
-      })
-      .then(() => supabase.auth.refreshSession())
-      .catch((err) => console.error("Failed to persist preset wallpaper:", err));
-  }, [wallpaperIndex, eligibleWallpaperIndices]);
+    if (user?.id) {
+      supabase.auth
+        .updateUser({
+          data: {
+            is_using_preset: true,
+            wallpaper_index: nextIndex,
+          },
+        })
+        .catch((err) => console.error("Failed to persist preset wallpaper:", err));
+    }
+  }, [wallpaperIndex, eligibleWallpaperIndices, user?.id]);
 
 
   const handleChangeBgMediaType = useCallback(
     (type) => {
       if (type === bgMediaType) return;
       const videoCount = VIDEO_WALLPAPERS.length;
-      const targetIndex =
-        type === "video" ? 0 : type === "image" ? videoCount : wallpaperIndex;
+      let targetIndex = wallpaperIndex;
+
+      if (type === "video") {
+        targetIndex = wallpaperIndex < videoCount ? wallpaperIndex : 0;
+      } else if (type === "image") {
+        targetIndex = wallpaperIndex >= videoCount ? wallpaperIndex : videoCount;
+      }
 
       setBgMediaType(type);
       setLocalBgUrl(null);
       setIsUsingPreset(true);
       setWallpaperIndex(targetIndex);
 
-      supabase.auth
-        .updateUser({
-          data: {
-            bg_media_type: type,
-            is_using_preset: true,
-            wallpaper_index: targetIndex,
-          },
-        })
-        .then(() => supabase.auth.refreshSession())
-        .catch((err) =>
-          console.error("Failed to persist background media type:", err)
-        );
+      if (user?.id) {
+        supabase.auth
+          .updateUser({
+            data: {
+              bg_media_type: type,
+              is_using_preset: true,
+              wallpaper_index: targetIndex,
+            },
+          })
+          .catch((err) =>
+            console.error("Failed to persist background media type:", err)
+          );
+      }
     },
-    [bgMediaType, wallpaperIndex]
+    [bgMediaType, wallpaperIndex, user?.id]
   );
 
   const handleBackgroundUpload = useCallback(

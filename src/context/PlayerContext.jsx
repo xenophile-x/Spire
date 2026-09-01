@@ -10,7 +10,7 @@ import { trackMatchesArtist } from "@/utils/artistNames";
 import { getStationAnchor, setStationAnchor } from "@/utils/radioTimeline";
 import { RADIO_STATIONS } from "@/constants/radioStations";
 import { recordListen } from "@/services/supabaseService";
-import { preloadAudio, preloadAudioRange } from "@/utils/audioSource";
+import { preloadAudio, preloadAudioRange, preloadFullTrack } from "@/utils/audioSource";
 
 
 const PlayerTimeContext = React.createContext({ currentTime: 0 });
@@ -408,6 +408,9 @@ export function PlayerProvider({ children }) {
     if (needsRefresh) generateRecommended(Boolean(recommendedPlaylist));
   }, [userTracks, recommendedPlaylist, recommendedGeneratedAt, generateRecommended]);
 
+  // Track which driveId we've already fully preloaded to avoid duplicate fetches
+  const fullyPreloadedRef = useRef(null);
+
   useEffect(() => {
     if (!activeTrack || isRadioMode) return;
     const queue = getActiveQueue();
@@ -415,7 +418,7 @@ export function PlayerProvider({ children }) {
     const idx = queue.findIndex((t) => t.id === activeTrack.id);
     if (idx < 0) return;
 
-    // Preload next track: resolve URL + download first 2MB (~10+ seconds of audio)
+    // Immediately resolve URL + download first 2MB (~10s of audio) for next track
     const next = queue[(idx + 1) % queue.length];
     const nextDriveId = next?.driveFileId || next?.drive_file_id || next?.drive_id;
     if (nextDriveId) {
@@ -423,7 +426,7 @@ export function PlayerProvider({ children }) {
       preloadAudioRange(nextDriveId, 0, 2 * 1024 * 1024, next);
     }
 
-    // Preload next-next track: resolve URL + download first 512KB
+    // Resolve URL only for next-next (lightweight — just cache the token+url)
     if (queue.length > 2) {
       const nextNext = queue[(idx + 2) % queue.length];
       const nnDriveId = nextNext?.driveFileId || nextNext?.drive_file_id || nextNext?.drive_id;
@@ -432,7 +435,31 @@ export function PlayerProvider({ children }) {
         preloadAudioRange(nnDriveId, 0, 512 * 1024, nextNext);
       }
     }
+
+    // Reset full-preload tracker when track changes
+    fullyPreloadedRef.current = null;
   }, [activeTrack, isRadioMode, getActiveQueue]);
+
+  // Time-based progressive preload: once current track is 60%+ done,
+  // fully download the next song blob so switching is truly instant
+  useEffect(() => {
+    if (!activeTrack || isRadioMode || duration <= 0) return;
+    const progressRatio = duration > 0 ? currentTimeRef.current / duration : 0;
+    if (progressRatio < 0.6) return;
+
+    const queue = getActiveQueue();
+    if (queue.length === 0) return;
+    const idx = queue.findIndex((t) => t.id === activeTrack.id);
+    if (idx < 0) return;
+
+    const next = queue[(idx + 1) % queue.length];
+    const nextDriveId = next?.driveFileId || next?.drive_file_id || next?.drive_id;
+    if (!nextDriveId || fullyPreloadedRef.current === nextDriveId) return;
+
+    fullyPreloadedRef.current = nextDriveId;
+    preloadFullTrack(nextDriveId, next);
+  }, [timeState, activeTrack, duration, isRadioMode, getActiveQueue]);
+
 
   const controlsValue = useMemo(
     () => ({

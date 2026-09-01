@@ -12,11 +12,11 @@ function GlassInput({
 }) {
   if (glassVariant === "liquid-refract") {
     return (
-      <LiquidGlass className={cn("rounded-lg overflow-hidden", className)}>
+      <LiquidGlass className={cn("rounded-lg overflow-hidden flex items-center justify-center", className)}>
         <Input
           data-slot="glass-input"
           data-glass-variant={glassVariant}
-          className={cn(className, "bg-transparent border-0 shadow-none")}
+          className={cn(className, "bg-transparent border-0 shadow-none w-full")}
           {...props} />
       </LiquidGlass>
     );

@@ -36,6 +36,9 @@ export function getOrCreateElementGraph(audioElement) {
   // Unconditionally rebuilding (old behaviour) closed the live context while
   // music was playing, causing an audible glitch and wiping user volume state.
   if (g && g.ctx.state !== "closed") {
+    if (g.ctx.state === "suspended") {
+      g.ctx.resume().catch(() => {});
+    }
     return g;
   }
 

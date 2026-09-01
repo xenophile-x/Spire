@@ -41,8 +41,10 @@ function plainLyricsFor(track) {
 }
 
 function formatClock(totalSeconds) {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
+  if (!totalSeconds || isNaN(totalSeconds) || !Number.isFinite(totalSeconds)) return "00:00";
+  const sec = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
@@ -67,9 +69,20 @@ function TrackRow({ track, isActive, isPlaying, onClick }) {
         }}
       />
       <div className="min-w-0 flex-1">
-        <p className={`truncate text-sm font-semibold ${isActive ? "text-white" : "text-white/90"}`}>
-          {track.title}
-        </p>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <p className={`truncate text-sm font-semibold ${isActive ? "text-white" : "text-white/90"}`}>
+            {track.title}
+          </p>
+          {track.isShared && (
+            <span
+              title={`Shared by ${track.sharedBy || "a friend"}`}
+              className="inline-flex shrink-0 items-center justify-center rounded-full bg-white/20 backdrop-blur-md px-1.5 py-0.5 border border-white/30 text-[10px] font-semibold text-white"
+            >
+              <span className="material-symbols-rounded text-[11px] mr-0.5 leading-none">person</span>
+              {track.sharedBy || "Shared"}
+            </span>
+          )}
+        </div>
         <p className="truncate text-xs font-medium text-white/60">{track.artist}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -166,6 +179,7 @@ export default function KaraokeView({
     recordingError,
     recordingWarning,
     elapsed,
+    recordedDuration,
     startRecording,
     stopRecording,
     discardRecording,
@@ -197,21 +211,19 @@ export default function KaraokeView({
     }
     if (!activeTrack) return;
     const el = audioElementRef?.current;
-    if (!isPlaying && el) {
-      onTogglePlay();
+    if (!el) return;
 
+    if (previewAudioRef.current && !previewAudioRef.current.paused) {
+      previewAudioRef.current.pause();
+    }
 
-      await new Promise((resolve) => {
-        if (!el.paused) return resolve();
-        const done = () => {
-          el.removeEventListener("playing", done);
-          el.removeEventListener("error", done);
-          resolve();
-        };
-        el.addEventListener("playing", done);
-        el.addEventListener("error", done);
-        setTimeout(done, 3000);
-      });
+    if (el.paused) {
+      try {
+        await el.play();
+        if (!isPlaying) onTogglePlay();
+      } catch (err) {
+        console.warn("[KaraokeView] Failed to play audio element:", err);
+      }
     }
     await startRecording(el);
   };
@@ -241,6 +253,7 @@ export default function KaraokeView({
       const name = `${activeTrack?.artist || "Karaoke"} - ${activeTrack?.title || "Recording"} (${stamp}).${ext}`;
       const file = new File([recordingBlob], name, { type: mime });
       const driveFileId = await uploadRecordingToDrive(file);
+      const actualDuration = Math.round(recordedDuration || previewDuration || 1);
       const meta = {
         id: `rec_${Date.now()}`,
         name,
@@ -249,7 +262,7 @@ export default function KaraokeView({
         driveFileId,
         createdAt: Date.now(),
         size: file.size,
-        duration: elapsed || Math.round(duration) || 0,
+        duration: actualDuration,
       };
       saveRecordingMeta(meta);
       discardRecording();
@@ -282,17 +295,22 @@ export default function KaraokeView({
   const handlePreviewScrubEnd = () => {
     previewScrubbingRef.current = false;
     const audio = previewAudioRef.current;
-    if (!audio || !Number.isFinite(audio.duration)) return;
-    audio.currentTime = previewTime;
-    setPreviewTime(audio.currentTime);
+    if (!audio) return;
+    try {
+      audio.currentTime = previewTime;
+    } catch {}
+    setPreviewTime(audio.currentTime || previewTime);
   };
-
 
   useEffect(() => {
     setPreviewPlaying(false);
     setPreviewTime(0);
-    setPreviewDuration(0);
-  }, [recordingUrl]);
+    if (recordedDuration > 0) {
+      setPreviewDuration(recordedDuration);
+    } else {
+      setPreviewDuration(0);
+    }
+  }, [recordingUrl, recordedDuration]);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-5">
@@ -502,64 +520,97 @@ export default function KaraokeView({
 
           <div className="shrink-0 border-t border-white/10 px-5 py-3">
             {recordingUrl ? (
-              <div className="flex items-center gap-3">
-                <LiquidGlass
-                  blur={8}
-                  refraction={14}
-                  saturation={1.6}
-                  onClick={togglePreview}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      togglePreview();
-                    }
-                  }}
-                  className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/20 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] transition-all hover:bg-white/30"
-                >
-                  {previewPlaying ? (
-                    <Pause className="h-4 w-4 fill-current text-white" />
-                  ) : (
-                    <Play className="h-4 w-4 fill-current text-white ml-0.5" />
-                  )}
-                </LiquidGlass>
-                <div className="min-w-0 flex-1">
-                  <GlassSlider
-                    value={previewTime}
-                    max={previewDuration}
-                    onChange={handlePreviewSeek}
-                    onScrubStart={() => {
-                      previewScrubbingRef.current = true;
+              <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-4">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <LiquidGlass
+                    blur={8}
+                    refraction={14}
+                    saturation={1.6}
+                    onClick={togglePreview}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        togglePreview();
+                      }
                     }}
-                    onScrubEnd={handlePreviewScrubEnd}
-                    label="Recording preview"
-                  />
+                    className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/20 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] shadow-lg shadow-black/20 transition-all hover:bg-white/30 active:scale-95"
+                  >
+                    {previewPlaying ? (
+                      <Pause className="h-5 w-5 fill-current text-white" />
+                    ) : (
+                      <Play className="h-5 w-5 fill-current text-white ml-0.5" />
+                    )}
+                  </LiquidGlass>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-xs font-bold text-white">
+                        Recording Preview
+                      </span>
+                      <span className="shrink-0 text-[11px] font-bold tabular-nums text-white/70">
+                        {formatClock(previewTime)} / {formatClock(previewDuration || recordedDuration)}
+                      </span>
+                    </div>
+                    <GlassSlider
+                      value={previewTime}
+                      max={previewDuration || recordedDuration || 0}
+                      onChange={handlePreviewSeek}
+                      onScrubStart={() => {
+                        previewScrubbingRef.current = true;
+                      }}
+                      onScrubEnd={handlePreviewScrubEnd}
+                      label="Recording preview timeline"
+                      className="mt-0.5"
+                    />
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
+
+                <div className="flex shrink-0 items-center gap-2 justify-end">
+                  <LiquidGlass
+                    blur={6}
+                    refraction={10}
+                    saturation={1.4}
                     onClick={handleDownloadTake}
-                    className="flex cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-white/80 transition-all hover:bg-white/20"
+                    role="button"
+                    tabIndex={0}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-xs font-bold text-white/90 [--liquid-glass-rim-light:rgba(255,255,255,0.5)] transition-all hover:bg-white/20 active:scale-95 shadow-sm"
                   >
-                    <span className="material-symbols-rounded text-base">download</span>
+                    <span className="material-symbols-rounded text-base leading-none">download</span>
                     Download
-                  </button>
-                  <button
-                    onClick={handleSaveToDrive}
-                    disabled={saving}
-                    className="flex cursor-pointer items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-xs font-bold text-black transition-all hover:bg-white disabled:opacity-50"
+                  </LiquidGlass>
+
+                  <LiquidGlass
+                    blur={8}
+                    refraction={14}
+                    saturation={1.6}
+                    onClick={!saving ? handleSaveToDrive : undefined}
+                    role="button"
+                    tabIndex={saving ? -1 : 0}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-full border border-white/40 bg-white/25 px-4 py-1.5 text-xs font-bold text-white [--liquid-glass-rim-light:rgba(255,255,255,0.8)] shadow-lg shadow-black/20 transition-all hover:bg-white/35 active:scale-95 ${
+                      saving ? "opacity-50 pointer-events-none" : ""
+                    }`}
                   >
-                    <span className="material-symbols-rounded text-base">cloud_upload</span>
+                    <span className={`material-symbols-rounded text-base leading-none ${saving ? "animate-spin" : ""}`}>
+                      {saving ? "progress_activity" : "cloud_upload"}
+                    </span>
                     {saving ? "Saving…" : "Save to Drive"}
-                  </button>
-                  <button
-                    onClick={discardRecording}
-                    disabled={saving}
-                    className="flex cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-white/80 transition-all hover:bg-white/20 disabled:opacity-50"
+                  </LiquidGlass>
+
+                  <LiquidGlass
+                    blur={6}
+                    refraction={10}
+                    saturation={1.4}
+                    onClick={!saving ? discardRecording : undefined}
+                    role="button"
+                    tabIndex={saving ? -1 : 0}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-xs font-bold text-white/90 [--liquid-glass-rim-light:rgba(255,255,255,0.5)] transition-all hover:bg-white/20 hover:text-white active:scale-95 shadow-sm ${
+                      saving ? "opacity-50 pointer-events-none" : ""
+                    }`}
                   >
-                    <span className="material-symbols-rounded text-base">delete</span>
+                    <span className="material-symbols-rounded text-base leading-none text-white/90">delete</span>
                     Discard
-                  </button>
+                  </LiquidGlass>
                 </div>
               </div>
             ) : (

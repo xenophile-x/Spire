@@ -57,27 +57,35 @@ export default function TrackCard({
 
           {track.isShared && (
             <div
-              className="absolute left-2 top-2 z-20 flex items-center gap-1"
+              className="absolute left-2 top-2 z-20 flex items-center gap-1.5"
               title={`Shared by ${track.sharedBy || "a friend"}`}
             >
-              {track.sharedByAvatar ? (
-                <img
-                  src={track.sharedByAvatar}
-                  alt={track.sharedBy}
-                  className="h-6 w-6 rounded-full border border-white/30 object-cover"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'flex';
-                  }}
-                />
-              ) : null}
-              <div
-                className={`h-6 w-6 rounded-full border border-white/30 bg-white/20 items-center justify-center ${track.sharedByAvatar ? 'hidden' : 'flex'}`}
+              <LiquidGlass
+                blur={8}
+                refraction={12}
+                saturation={1.5}
+                className="flex items-center gap-1 rounded-full border border-white/30 bg-white/15 px-2 py-0.5 shadow-md backdrop-blur-md [--liquid-glass-rim-light:rgba(255,255,255,0.6)]"
               >
-                <span className="material-symbols-rounded text-[12px] leading-none text-emerald-300">
+                {track.sharedByAvatar ? (
+                  <img
+                    src={track.sharedByAvatar}
+                    alt={track.sharedBy}
+                    className="h-3.5 w-3.5 rounded-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      if (e.target.nextSibling) e.target.nextSibling.style.display = 'inline-block';
+                    }}
+                  />
+                ) : null}
+                <span className={`material-symbols-rounded text-[11px] leading-none text-white ${track.sharedByAvatar ? 'hidden' : 'inline-block'}`}>
                   person
                 </span>
-              </div>
+                {track.sharedBy && (
+                  <span className="text-[10px] font-semibold text-white/90 truncate max-w-[80px]">
+                    {track.sharedBy}
+                  </span>
+                )}
+              </LiquidGlass>
             </div>
           )}
 

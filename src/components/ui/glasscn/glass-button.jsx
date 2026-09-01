@@ -16,7 +16,7 @@ function GlassButton({
   if (isLiquidRefract) {
     return (
       <LiquidGlass
-        className={cn("rounded-full overflow-hidden", className)}
+        className={cn("rounded-full overflow-hidden flex items-center justify-center", className)}
         blur={8}
         refraction={10}
         saturation={1.5}
@@ -25,7 +25,7 @@ function GlassButton({
           data-slot="glass-button"
           data-glass-variant={glassVariant}
           className={cn(
-            "text-foreground cursor-pointer",
+            "text-foreground cursor-pointer inline-flex items-center justify-center",
             className,
             "bg-transparent border-0 shadow-none"
           )}

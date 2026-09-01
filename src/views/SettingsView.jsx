@@ -255,14 +255,14 @@ function ListenTogetherCard({
                     onKeyDown={(e) => e.key === "Enter" && handleRedeemCode()}
                     placeholder="8-character code"
                     maxLength={8}
-                    className="w-full rounded-xl text-center text-xs font-semibold tracking-[0.2em] placeholder:text-white/40 text-white h-9 bg-white/5 border-white/10"
+                    className="w-full rounded-xl text-center placeholder:text-center text-xs font-semibold tracking-[0.2em] placeholder:tracking-[0.2em] placeholder:text-white/40 text-white h-9 bg-white/5 border-white/10 !py-0 flex items-center justify-center"
                   />
                 </div>
                 <GlassButton
                   onClick={handleRedeemCode}
                   disabled={isLinking || !/^[A-Z0-9]{6,8}$/.test(linkCode.trim().toUpperCase())}
                   glassVariant="liquid-refract"
-                  className="shrink-0 rounded-xl px-4 py-2 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-40 h-9"
+                  className="shrink-0 rounded-xl px-4 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-40 h-9 flex items-center justify-center !py-0"
                 >
                   {isLinking ? "..." : "Link"}
                 </GlassButton>
@@ -311,14 +311,14 @@ function ListenTogetherCard({
                     onKeyDown={(e) => e.key === "Enter" && handleJoinRoom()}
                     placeholder="ROOM CODE"
                     maxLength={6}
-                    className="w-full rounded-full h-8 text-center text-[11px] font-semibold uppercase tracking-[0.15em] placeholder:text-white/40 text-white"
+                    className="w-full rounded-full h-8 text-center placeholder:text-center text-[11px] font-semibold uppercase tracking-[0.15em] placeholder:tracking-[0.15em] placeholder:text-white/40 text-white !py-0 flex items-center justify-center"
                   />
                 </div>
                 <GlassButton
                   onClick={handleJoinRoom}
                   disabled={connecting || !joinCode.trim()}
                   glassVariant="liquid-refract"
-                  className="shrink-0 rounded-full px-4 h-8 text-[11px] font-semibold text-white hover:bg-white/15 disabled:opacity-40 flex items-center justify-center"
+                  className="shrink-0 rounded-full px-4 h-8 text-[11px] font-semibold text-white hover:bg-white/15 disabled:opacity-40 flex items-center justify-center !py-0"
                 >
                   {connecting ? "Joining..." : "Join"}
                 </GlassButton>
@@ -545,7 +545,7 @@ export default function SettingsView({
               </span>
               <div className="flex flex-col">
                 <span className="text-xs font-medium text-white/90 group-hover:text-white">
-                  Sync Artist Photos
+                  Sync
                 </span>
                 <span className="text-[10px] text-white/50">{syncSubtitle}</span>
               </div>

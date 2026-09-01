@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useCallback } from "react";
 import { parseLRC } from "@/utils/lyricsParser";
 import { getStreamTrackUrl } from "@/utils/audioSource";
+import { getOrCreateElementGraph } from "@/utils/audioElementGraph";
 
 const STALL_TIMEOUT_MS = 8000;
 
@@ -100,6 +101,12 @@ export default function AudioPlayer({
       }
 
       if (shouldPlay) {
+        try {
+          const g = getOrCreateElementGraph(audio);
+          if (g?.ctx?.state === "suspended") {
+            g.ctx.resume().catch(() => {});
+          }
+        } catch {}
         const playPromise = audio.play();
         if (playPromise !== undefined) {
           playPromise.catch((err) => {
@@ -125,6 +132,12 @@ export default function AudioPlayer({
 
     if (isPlaying) {
       if (loadedTrackIdRef.current !== activeTrack?.id) return;
+      try {
+        const g = getOrCreateElementGraph(audio);
+        if (g?.ctx?.state === "suspended") {
+          g.ctx.resume().catch(() => {});
+        }
+      } catch {}
       const playPromise = audio.play();
       if (playPromise !== undefined) {
         playPromise.catch((err) => {

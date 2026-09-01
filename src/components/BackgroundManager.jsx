@@ -1,14 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { isVideoUrl } from "@/utils/imageUtils";
+import { cn } from "@/lib/utils";
 
-function BackgroundLayer({ url, className, onError }) {
+function MediaLayer({ url, isVideo, className, onLoad, onError }) {
   if (!url) return null;
 
-  if (isVideoUrl(url)) {
+  if (isVideo) {
     return (
       <video
         key={url}
-        className={`${className} h-full w-full object-cover`}
         src={url}
         autoPlay
         loop
@@ -19,169 +19,107 @@ function BackgroundLayer({ url, className, onError }) {
         controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
         disablePictureInPicture
         disableRemotePlayback
-        onError={(e) => {
-          // Suppress Safari placard errors (pip/airplay) when network is down — fallback silently
-          if (typeof navigator !== "undefined" && !navigator.onLine) {
-            e?.preventDefault?.();
-          }
-          onError?.(e);
-        }}
+        onLoadedData={onLoad}
+        onCanPlay={onLoad}
+        onPlaying={onLoad}
+        onError={onError}
+        className={cn("absolute inset-0 h-full w-full object-cover", className)}
       />
     );
   }
 
-  return <div className={className} style={{ backgroundImage: `url("${url}")` }} />;
+  return (
+    <div
+      className={cn("absolute inset-0 bg-cover bg-center bg-no-repeat", className)}
+      style={{ backgroundImage: `url("${url}")` }}
+    >
+      <img
+        src={url}
+        alt=""
+        className="hidden"
+        onLoad={onLoad}
+        onError={onError}
+      />
+    </div>
+  );
 }
 
-const FADE_MS = 1100;
+const FADE_MS = 600;
 
 export default function BackgroundManager({ targetBgUrl, preloadUrl }) {
   const [currentBg, setCurrentBg] = useState(targetBgUrl);
   const [prevBg, setPrevBg] = useState(null);
   const [isFading, setIsFading] = useState(false);
+
   const swapTokenRef = useRef(0);
-  const layersRef = useRef({ current: targetBgUrl, prev: null });
-  layersRef.current = { current: currentBg, prev: prevBg };
+  const currentBgRef = useRef(targetBgUrl);
+  currentBgRef.current = currentBg;
 
   useEffect(() => {
-    if (!preloadUrl || preloadUrl === layersRef.current.current || preloadUrl === layersRef.current.prev) return;
+    if (targetBgUrl === currentBgRef.current) return;
 
-    if (isVideoUrl(preloadUrl)) {
-      const probe = document.createElement("video");
-      probe.preload = "auto";
-      probe.muted = true;
-      probe.src = preloadUrl;
-      return () => {
-        probe.removeAttribute("src");
-        probe.load();
-      };
-    }
-
-    const img = new Image();
-    img.src = preloadUrl;
-    return () => {
-      img.src = "";
-    };
-  }, [preloadUrl]);
-
-  useEffect(() => {
-    if (targetBgUrl === currentBg) return;
-
-    let isMounted = true;
-    let failSafe;
-    let raf1;
-    let raf2;
-    let dropTimer;
     const token = ++swapTokenRef.current;
+    setPrevBg(currentBgRef.current);
+    setCurrentBg(targetBgUrl);
+    setIsFading(true);
 
-    const commitSwap = () => {
-      if (!isMounted || token !== swapTokenRef.current) return;
-      setPrevBg(currentBg);
-      setCurrentBg(targetBgUrl);
-      setIsFading(true);
-      raf1 = requestAnimationFrame(() => {
-        raf2 = requestAnimationFrame(() => {
-          if (isMounted && token === swapTokenRef.current) setIsFading(false);
-        });
-      });
-      dropTimer = setTimeout(() => {
-        if (isMounted && token === swapTokenRef.current) setPrevBg(null);
-      }, FADE_MS);
-    };
+    const fadeTimer = setTimeout(() => {
+      if (token === swapTokenRef.current) {
+        setIsFading(false);
+        setPrevBg(null);
+      }
+    }, FADE_MS);
 
-    if (targetBgUrl.startsWith("blob:")) {
-      commitSwap();
-      return () => {
-        isMounted = false;
-        clearTimeout(dropTimer);
-      };
-    }
+    return () => clearTimeout(fadeTimer);
+  }, [targetBgUrl]);
 
-    failSafe = setTimeout(commitSwap, 8000);
-
-    const finishEarly = () => {
-      clearTimeout(failSafe);
-      commitSwap();
-    };
-
-    if (isVideoUrl(targetBgUrl)) {
-      const probe = document.createElement("video");
-      probe.preload = "auto";
-      probe.muted = true;
-      probe.src = targetBgUrl;
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        finishEarly();
-        probe.removeAttribute("src");
-        probe.load();
-      };
-      probe.addEventListener("canplay", finish, { once: true });
-      probe.addEventListener("error", finish, { once: true });
-
-      return () => {
-        isMounted = false;
-        settled = true;
-        clearTimeout(failSafe);
-        clearTimeout(dropTimer);
-        cancelAnimationFrame(raf1);
-        cancelAnimationFrame(raf2);
-        probe.removeAttribute("src");
-        probe.load();
-      };
-    }
-
-    const img = new Image();
-    img.src = targetBgUrl;
-    img.onload = finishEarly;
-    img.onerror = finishEarly;
-
-    return () => {
-      isMounted = false;
-      clearTimeout(failSafe);
-      clearTimeout(dropTimer);
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-      img.onload = null;
-      img.onerror = null;
-      img.src = "";
-    };
-  }, [targetBgUrl, currentBg]);
+  const currentIsVideo = isVideoUrl(currentBg);
+  const prevIsVideo = isVideoUrl(prevBg);
 
   return (
-    <>
+    <div className="fixed inset-0 z-0 overflow-hidden bg-black select-none pointer-events-none">
+      {/* Previous background during transition */}
       {prevBg && (
-        <BackgroundLayer
+        <MediaLayer
           url={prevBg}
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none z-0"
+          isVideo={prevIsVideo}
+          className="pointer-events-none z-0"
         />
       )}
-      <BackgroundLayer
+
+      {/* Current background */}
+      <MediaLayer
         url={currentBg}
-        className={`absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none z-0 transition-opacity duration-1000 ease-in-out ${
-          isFading ? "opacity-0" : "opacity-100"
-        }`}
-        onError={() => {
-          if (currentBg && !currentBg.startsWith("blob:") && currentBg !== prevBg) {
-            setCurrentBg(prevBg || currentBg);
-          }
-        }}
+        isVideo={currentIsVideo}
+        className={cn(
+          "pointer-events-none z-0 transition-opacity duration-500 ease-in-out",
+          isFading && prevBg ? "opacity-90" : "opacity-100"
+        )}
       />
 
-      {preloadUrl && isVideoUrl(preloadUrl) && preloadUrl !== currentBg && preloadUrl !== prevBg && (
-        <video
-          key={preloadUrl}
-          src={preloadUrl}
-          preload="auto"
-          muted
-          playsInline
-          aria-hidden="true"
-          className="pointer-events-none absolute left-0 top-0 h-1 w-1 opacity-0"
-        />
+      {/* Hidden preloader for next background */}
+      {preloadUrl && preloadUrl !== currentBg && preloadUrl !== prevBg && (
+        isVideoUrl(preloadUrl) ? (
+          <video
+            key={preloadUrl}
+            src={preloadUrl}
+            preload="auto"
+            muted
+            playsInline
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-0 h-1 w-1 opacity-0"
+          />
+        ) : (
+          <img
+            key={preloadUrl}
+            src={preloadUrl}
+            alt=""
+            className="pointer-events-none absolute left-0 top-0 h-1 w-1 opacity-0"
+          />
+        )
       )}
 
-      <div className="absolute inset-0 pointer-events-none z-0 bg-black/10" />
-    </>
+      <div className="absolute inset-0 pointer-events-none z-0 bg-black/20" />
+    </div>
   );
 }

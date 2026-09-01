@@ -39,6 +39,7 @@ export default defineConfig({
     },
   },
   build: {
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -51,6 +52,13 @@ export default defineConfig({
             id.includes("/scheduler/")
           ) {
             return "vendor-react";
+          }
+          if (
+            id.includes("lucide-react") ||
+            id.includes("@radix-ui") ||
+            id.includes("motion")
+          ) {
+            return "vendor-ui";
           }
           return undefined;
         },

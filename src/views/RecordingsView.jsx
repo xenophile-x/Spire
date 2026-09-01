@@ -6,6 +6,16 @@ import { useNavigate } from "react-router-dom";
 import { LiquidGlass } from "@/components/ui/glasscn/liquid-glass";
 import { GlassCard } from "@/components/ui/glasscn/glass-card";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  GlassAlertDialogContent,
+} from "@/components/ui/glasscn/glass-alert-dialog";
+import {
   getSavedRecordings,
   removeRecordingMeta,
   getRecordingPlaybackUrl,
@@ -43,7 +53,7 @@ function RecordingCard({ recording, isPlaying, isBusy, isDownloading, onTogglePl
         blur: 14,
         refraction: 18,
         saturation: 1.6,
-        className: "rounded-3xl [--liquid-glass-rim-light:rgba(255,255,255,0.4)]",
+        className: "rounded-3xl border border-white/10 [--liquid-glass-rim-light:rgba(255,255,255,0.35)]",
       }}
       className="gap-0 overflow-hidden py-0"
     >
@@ -61,7 +71,7 @@ function RecordingCard({ recording, isPlaying, isBusy, isDownloading, onTogglePl
               onTogglePlay();
             }
           }}
-          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/20 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] transition-all hover:bg-white/30"
+          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-white/20 [--liquid-glass-rim-light:rgba(255,255,255,0.6)] transition-all hover:border-white/40 active:scale-95"
         >
           {isPlaying ? (
             <Pause className="h-5 w-5 fill-current text-white" />
@@ -73,7 +83,7 @@ function RecordingCard({ recording, isPlaying, isBusy, isDownloading, onTogglePl
           <p className="truncate text-sm font-bold text-white">
             {recording.trackTitle || "Karaoke recording"}
           </p>
-          <p className="truncate text-xs font-medium text-white/50">
+          <p className="truncate text-xs font-medium text-white/60">
             {recording.artist || "You"}
           </p>
           <p className="mt-0.5 text-[10px] font-semibold text-white/40">
@@ -87,23 +97,24 @@ function RecordingCard({ recording, isPlaying, isBusy, isDownloading, onTogglePl
       <div className="flex items-center justify-between border-t border-white/10 px-4 py-2">
         <button
           onClick={onDelete}
-          className="flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold text-white/50 transition-all hover:bg-red-500/20 hover:text-red-300"
+          className="flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold text-white/70 transition-all hover:text-white hover:bg-white/10 active:scale-95"
         >
-          <span className="material-symbols-rounded text-base">delete</span>
+          <span className="material-symbols-rounded text-sm">delete</span>
           Delete
         </button>
+
         <div className="flex items-center gap-1">
           <button
-            onClick={onDownload}
+            onClick={!isDownloading ? onDownload : undefined}
             disabled={isDownloading}
-            className="flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold text-white/50 transition-all hover:bg-white/20 hover:text-white disabled:opacity-50"
+            className="flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold text-white/70 transition-all hover:text-white active:scale-95 disabled:opacity-40"
           >
-            <span className={`material-symbols-rounded text-base ${isDownloading ? "animate-pulse" : ""}`}>
-              download
+            <span className={`material-symbols-rounded text-sm ${isDownloading ? "animate-spin" : ""}`}>
+              {isDownloading ? "progress_activity" : "download"}
             </span>
             {isDownloading ? "Preparing…" : "Download"}
           </button>
-          <span className="flex items-center gap-1 text-[10px] font-semibold text-white/40">
+          <span className="text-white/30" title="Saved to Drive">
             <span className="material-symbols-rounded text-sm">cloud_done</span>
           </span>
         </div>
@@ -121,14 +132,14 @@ export default function RecordingsView() {
   const [currentTime, setCurrentTime] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
   const [downloadingId, setDownloadingId] = useState(null);
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const audioRef = useRef(null);
   const scrubbingRef = useRef(false);
   const scrubTimeRef = useRef(0);
 
-
   const latestReqRef = useRef(0);
-
-
   const playbackUrlRef = useRef(null);
 
   const revokeOwnedUrl = () => {
@@ -147,7 +158,6 @@ export default function RecordingsView() {
   );
 
   const stopPlayback = useCallback(() => {
-
     latestReqRef.current++;
     const audio = audioRef.current;
     if (audio) {
@@ -170,8 +180,6 @@ export default function RecordingsView() {
       try {
         const src = await getRecordingPlaybackUrl(recording);
         if (reqId !== latestReqRef.current) {
-
-
           if (src && src.startsWith("blob:")) URL.revokeObjectURL(src);
           return;
         }
@@ -210,9 +218,11 @@ export default function RecordingsView() {
   const handleScrubEnd = () => {
     scrubbingRef.current = false;
     const audio = audioRef.current;
-    if (!audio || !Number.isFinite(audio.duration)) return;
-    audio.currentTime = scrubTimeRef.current;
-    setCurrentTime(audio.currentTime);
+    if (!audio) return;
+    try {
+      audio.currentTime = scrubTimeRef.current;
+    } catch {}
+    setCurrentTime(audio.currentTime || scrubTimeRef.current);
   };
 
   const handleDownload = async (recording) => {
@@ -225,7 +235,6 @@ export default function RecordingsView() {
       }
       triggerDownload(src, recording.name || "karaoke-recording");
 
-
       if (src.startsWith("blob:")) {
         setTimeout(() => URL.revokeObjectURL(src), 10_000);
       }
@@ -237,17 +246,20 @@ export default function RecordingsView() {
     }
   };
 
-  const handleDelete = async (recording) => {
-    if (!window.confirm("Delete this recording from your Google Drive?")) return;
+  const handleConfirmDelete = async () => {
+    if (!deleteCandidate) return;
+    setIsDeleting(true);
     try {
-      await deleteDriveFile(recording.driveFileId);
+      await deleteDriveFile(deleteCandidate.driveFileId);
     } catch (err) {
       console.warn("[RecordingsView] Drive delete failed:", err);
     }
-    setRecordings(removeRecordingMeta(recording.id));
-    if (playingId === recording.id) {
+    setRecordings(removeRecordingMeta(deleteCandidate.id));
+    if (playingId === deleteCandidate.id) {
       stopPlayback();
     }
+    setIsDeleting(false);
+    setDeleteCandidate(null);
   };
 
   return (
@@ -269,7 +281,7 @@ export default function RecordingsView() {
                 navigate("/karaoke");
               }
             }}
-            className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-white/15 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] shadow-lg shadow-black/10 transition-all hover:bg-white/25"
+            className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-white/15 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] shadow-lg shadow-black/10 transition-all hover:bg-white/25 active:scale-95"
           >
             <span className="material-symbols-rounded text-xl text-white">arrow_back</span>
           </LiquidGlass>
@@ -287,19 +299,24 @@ export default function RecordingsView() {
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 text-white/40">
           <span className="material-symbols-rounded text-6xl">fiber_smart_record</span>
           <p className="text-sm font-medium">No recordings yet — hit Record in Karaoke and sing!</p>
-          <button
+          <LiquidGlass
+            blur={8}
+            refraction={14}
+            saturation={1.6}
             onClick={() => navigate("/karaoke")}
-            className="flex cursor-pointer items-center gap-2 rounded-full bg-white/90 px-5 py-2.5 text-xs font-bold text-black transition-all hover:bg-white"
+            role="button"
+            tabIndex={0}
+            className="flex cursor-pointer items-center gap-2 rounded-full bg-white/25 border border-white/35 px-5 py-2.5 text-xs font-bold text-white [--liquid-glass-rim-light:rgba(255,255,255,0.7)] shadow-lg shadow-black/20 transition-all hover:bg-white/35 active:scale-95"
           >
             <span className="material-symbols-rounded text-base">mic</span>
             Go to Karaoke
-          </button>
+          </LiquidGlass>
         </div>
       ) : (
         <>
           <AppleResizableGrid cols="grid-cols-1 md:grid-cols-2 xl:grid-cols-3" gap="gap-4" className="min-h-0 flex-1 auto-rows-min pb-8">
             {recordings.map((recording) => (
-              <AppleResizableTile key={recording.id} id={`rec-${recording.id}`} defaultSize="1x1" onRemove={() => handleDelete(recording)}>
+              <AppleResizableTile key={recording.id} id={`rec-${recording.id}`} defaultSize="1x1" onRemove={() => setDeleteCandidate(recording)}>
                 <RecordingCard
                   recording={recording}
                   isPlaying={playingId === recording.id}
@@ -307,12 +324,11 @@ export default function RecordingsView() {
                   isDownloading={downloadingId === recording.id}
                   onTogglePlay={() => togglePlayback(recording)}
                   onDownload={() => handleDownload(recording)}
-                  onDelete={() => handleDelete(recording)}
+                  onDelete={() => setDeleteCandidate(recording)}
                 />
               </AppleResizableTile>
             ))}
           </AppleResizableGrid>
-
 
           {playingId && (
             <GlassCard
@@ -321,14 +337,14 @@ export default function RecordingsView() {
                 blur: 14,
                 refraction: 18,
                 saturation: 1.6,
-                className: "rounded-3xl [--liquid-glass-rim-light:rgba(255,255,255,0.4)]",
+                className: "rounded-3xl border border-white/20 [--liquid-glass-rim-light:rgba(255,255,255,0.6)] shadow-2xl shadow-black/30",
               }}
               className="shrink-0 gap-0 overflow-hidden py-0"
             >
               {(() => {
                 const current = recordings.find((r) => r.id === playingId);
                 return (
-                  <div className="flex items-center gap-3 px-5 py-3">
+                  <div className="flex items-center gap-3 px-5 py-3.5">
                     <LiquidGlass
                       blur={8}
                       refraction={14}
@@ -342,9 +358,8 @@ export default function RecordingsView() {
                           togglePlayback(current);
                         }
                       }}
-                      className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/20 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] transition-all hover:bg-white/30"
+                      className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/20 border border-white/30 [--liquid-glass-rim-light:rgba(255,255,255,0.7)] shadow-md shadow-black/20 transition-all hover:bg-white/30 active:scale-95"
                     >
-
                       <Pause className="h-4 w-4 fill-current text-white" />
                     </LiquidGlass>
                     <div className="min-w-0 flex-1">
@@ -352,7 +367,7 @@ export default function RecordingsView() {
                         <p className="truncate text-xs font-bold text-white">
                           {current?.trackTitle || "Karaoke recording"}
                         </p>
-                        <span className="shrink-0 text-[10px] font-semibold tabular-nums text-white/50">
+                        <span className="shrink-0 text-[11px] font-bold tabular-nums text-white/70">
                           {formatRecordingDuration(currentTime)} /{" "}
                           {formatRecordingDuration(totalDuration || current?.duration)}
                         </span>
@@ -366,23 +381,31 @@ export default function RecordingsView() {
                         }}
                         onScrubEnd={handleScrubEnd}
                         label="Seek recording"
-                        className="mt-1.5"
+                        className="mt-1"
                       />
                     </div>
-                    <button
+                    <LiquidGlass
+                      blur={6}
+                      refraction={10}
+                      saturation={1.4}
                       onClick={() => handleDownload(current)}
-                      aria-label="Download recording"
-                      className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/60 transition-all hover:bg-white/20 hover:text-white"
+                      role="button"
+                      tabIndex={0}
+                      className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-white/20 bg-white/10 text-white/80 [--liquid-glass-rim-light:rgba(255,255,255,0.5)] transition-all hover:bg-white/25 hover:text-white active:scale-95 shadow-sm"
                     >
                       <span className="material-symbols-rounded text-lg">download</span>
-                    </button>
-                    <button
+                    </LiquidGlass>
+                    <LiquidGlass
+                      blur={6}
+                      refraction={10}
+                      saturation={1.4}
                       onClick={stopPlayback}
-                      aria-label="Close player"
-                      className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/60 transition-all hover:bg-white/20 hover:text-white"
+                      role="button"
+                      tabIndex={0}
+                      className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-white/20 bg-white/10 text-white/80 [--liquid-glass-rim-light:rgba(255,255,255,0.5)] transition-all hover:bg-white/25 hover:text-white active:scale-95 shadow-sm"
                     >
                       <span className="material-symbols-rounded text-lg">close</span>
-                    </button>
+                    </LiquidGlass>
                   </div>
                 );
               })()}
@@ -391,16 +414,53 @@ export default function RecordingsView() {
         </>
       )}
 
+      {/* Glass Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteCandidate} onOpenChange={(open) => !open && setDeleteCandidate(null)}>
+        <GlassAlertDialogContent glassVariant="liquid-refract">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-lg font-bold tracking-tight text-white">
+              <span className="material-symbols-rounded text-red-400 text-xl">delete</span>
+              Delete Recording?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm font-medium leading-relaxed text-white/70">
+              Are you sure you want to permanently delete{" "}
+              <span className="font-bold text-white">"{deleteCandidate?.trackTitle || "this recording"}"</span> from your Google Drive?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex items-center justify-end gap-2 pt-2">
+            <AlertDialogCancel className="cursor-pointer rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-white transition-all hover:bg-white/20">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="cursor-pointer rounded-full border border-red-500/40 bg-red-500/80 px-4 py-2 text-xs font-bold text-white transition-all hover:bg-red-500 active:scale-95 shadow-lg shadow-red-500/20"
+            >
+              {isDeleting ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </GlassAlertDialogContent>
+      </AlertDialog>
+
       <audio
         ref={audioRef}
         className="hidden"
         onTimeUpdate={() => {
           if (!scrubbingRef.current && audioRef.current) {
-            setCurrentTime(audioRef.current.currentTime);
+            const cur = audioRef.current.currentTime;
+            setCurrentTime(cur);
+            if (Number.isFinite(audioRef.current.duration) && audioRef.current.duration > 0) {
+              setTotalDuration(audioRef.current.duration);
+            }
           }
         }}
         onLoadedMetadata={() => {
-          if (audioRef.current && Number.isFinite(audioRef.current.duration)) {
+          if (audioRef.current && Number.isFinite(audioRef.current.duration) && audioRef.current.duration > 0) {
+            setTotalDuration(audioRef.current.duration);
+          }
+        }}
+        onDurationChange={() => {
+          if (audioRef.current && Number.isFinite(audioRef.current.duration) && audioRef.current.duration > 0) {
             setTotalDuration(audioRef.current.duration);
           }
         }}

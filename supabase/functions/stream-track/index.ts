@@ -9,11 +9,11 @@ const ALLOWED_ORIGINS = [
   "http://localhost:3000",
 ];
 function getCorsHeaders(origin: string | null) {
-  const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGIN;
   return {
-    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Origin": origin || "*",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, range",
     "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getOrCreateElementGraph,
   getElementGraph,
-  cleanupElementGraph,
 } from "@/utils/audioElementGraph";
 
 
@@ -20,6 +19,7 @@ export function useKaraokeRecorder() {
   const [recordingError, setRecordingError] = useState(null);
   const [recordingWarning, setRecordingWarning] = useState(null);
   const [elapsed, setElapsed] = useState(0);
+  const [recordedDuration, setRecordedDuration] = useState(0);
   const [monitorEnabled, setMonitorEnabled] = useState(false);
 
   const sessionRef = useRef({
@@ -37,11 +37,12 @@ export function useKaraokeRecorder() {
     previewUrl: null,
     starting: false,
     audioElement: null,
-    musicVolume: 1.0,
-    micVolume: 1.8,
+    musicVolume: 0.7,
+    micVolume: 3.0,
     monitorEnabled: false,
     musicProbeTimer: null,
     voiceFilter: null,
+    voicePresence: null,
     voiceCompressor: null,
     voiceMakeup: null,
     // Sidechain ducking
@@ -109,12 +110,23 @@ export function useKaraokeRecorder() {
       if (session.micStream) {
         session.micStream.getTracks().forEach((track) => track.stop());
       }
-      if (session.previewUrl) URL.revokeObjectURL(session.previewUrl);
+      if (session.musicSource && session.musicGain) {
+        try {
+          session.musicSource.disconnect(session.musicGain);
+        } catch {}
+      }
+      try { session.musicGain?.disconnect(); } catch {}
+      try { session.micSource?.disconnect(); } catch {}
+      try { session.micGain?.disconnect(); } catch {}
+      try { session.monitorGain?.disconnect(); } catch {}
+      try { session.compressor?.disconnect(); } catch {}
+      try { session.voiceFilter?.disconnect(); } catch {}
+      try { session.voicePresence?.disconnect(); } catch {}
+      try { session.voiceCompressor?.disconnect(); } catch {}
+      try { session.voiceMakeup?.disconnect(); } catch {}
 
       if (session.isFallbackCtx && session.ctx) {
         session.ctx.close().catch(() => {});
-      } else if (session.audioElement) {
-        cleanupElementGraph(session.audioElement);
       }
     };
   }, []);
@@ -145,115 +157,114 @@ export function useKaraokeRecorder() {
 
       session.starting = true;
       try {
+        let ctx;
+        let musicSource = null;
+        let isFallbackCtx = false;
+        try {
+          const g = getOrCreateElementGraph(audioElement);
+          ctx = g.ctx;
+          musicSource = g.musicSource;
+          session.audioElement = audioElement;
+          session.musicSource = musicSource;
+          if (ctx.state === "suspended") {
+            await ctx.resume();
+          }
+        } catch (err) {
+          console.warn(
+            "[KaraokeRecorder] Music routing unavailable — recording voice only:",
+            err
+          );
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          ctx = new AudioCtx({ latencyHint: "interactive" });
+          isFallbackCtx = true;
+          if (ctx.state === "suspended") {
+            await ctx.resume();
+          }
+          setRecordingWarning(
+            "Music could not be mixed into this recording — voice only."
+          );
+        }
 
-      if (session.musicGain) {
-        session.musicGain.disconnect();
-        session.musicGain = null;
-      }
-      if (session.micSource) {
-        session.micSource.disconnect();
-        session.micSource = null;
-      }
-      if (session.micGain) {
-        session.micGain.disconnect();
-        session.micGain = null;
-      }
-      if (session.monitorGain) {
-        session.monitorGain.disconnect();
-        session.monitorGain = null;
-      }
-      if (session.voiceFilter) {
-        session.voiceFilter.disconnect();
-        session.voiceFilter = null;
-      }
-      if (session.voiceCompressor) {
-        session.voiceCompressor.disconnect();
-        session.voiceCompressor = null;
-      }
-      if (session.voiceMakeup) {
-        session.voiceMakeup.disconnect();
-        session.voiceMakeup = null;
-      }
-      // Tear down any previous ducking nodes before restarting
-      if (session.duckInterval) {
-        clearInterval(session.duckInterval);
-        session.duckInterval = null;
-      }
-      try { session.duckGain?.disconnect(); } catch {}
-      try { session.duckAnalyser?.disconnect(); } catch {}
-      session.duckGain = null;
-      session.duckAnalyser = null;
-      if (session.micStream) {
-        session.micStream.getTracks().forEach((track) => track.stop());
-        session.micStream = null;
-      }
+        session.ctx = ctx;
+        session.isFallbackCtx = isFallbackCtx;
 
-      // Bug C: browser echo-cancellation uses the speaker output as its AEC reference,
-      // but Web Audio bypasses the expected speaker path — so AEC can over-suppress
-      // the mic when playing music through speakers (non-headphone use).
-      // We can't reliably detect headphones, so surface a one-liner hint instead.
-      if (!session.monitorEnabled) {
-        setRecordingWarning("For clearest results, use headphones while recording.");
-      }
+        if (session.musicSource && session.musicGain) {
+          try {
+            session.musicSource.disconnect(session.musicGain);
+          } catch {}
+        }
+        if (session.musicGain) {
+          try { session.musicGain.disconnect(); } catch {}
+          session.musicGain = null;
+        }
+        if (session.micSource) {
+          try { session.micSource.disconnect(); } catch {}
+          session.micSource = null;
+        }
+        if (session.micGain) {
+          try { session.micGain.disconnect(); } catch {}
+          session.micGain = null;
+        }
+        if (session.monitorGain) {
+          try { session.monitorGain.disconnect(); } catch {}
+          session.monitorGain = null;
+        }
+        if (session.voiceFilter) {
+          try { session.voiceFilter.disconnect(); } catch {}
+          session.voiceFilter = null;
+        }
+        if (session.voicePresence) {
+          try { session.voicePresence.disconnect(); } catch {}
+          session.voicePresence = null;
+        }
+        if (session.voiceCompressor) {
+          try { session.voiceCompressor.disconnect(); } catch {}
+          session.voiceCompressor = null;
+        }
+        if (session.voiceMakeup) {
+          try { session.voiceMakeup.disconnect(); } catch {}
+          session.voiceMakeup = null;
+        }
+        if (session.duckInterval) {
+          clearInterval(session.duckInterval);
+          session.duckInterval = null;
+        }
+        try { session.duckGain?.disconnect(); } catch {}
+        try { session.duckAnalyser?.disconnect(); } catch {}
+        session.duckGain = null;
+        session.duckAnalyser = null;
+        if (session.micStream) {
+          session.micStream.getTracks().forEach((track) => track.stop());
+          session.micStream = null;
+        }
 
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          // Noise suppression gates quiet sung vowels until you get loud —
-          // fatal for karaoke. Keep echo control, prefer NS off, let AGC
-          // normalize input level.
-          echoCancellation: { ideal: true },
-          noiseSuppression: { ideal: false },
-          autoGainControl: { ideal: false },
-          channelCount: { ideal: 1 },
-        },
-      });
+        if (!session.monitorEnabled) {
+          setRecordingWarning("For clearest results, use headphones while recording.");
+        }
 
+        const micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: { ideal: false },
+            noiseSuppression: { ideal: false },
+            autoGainControl: { ideal: true },
+            channelCount: { ideal: 1 },
+          },
+        });
 
-      session.micStream = micStream;
+        session.micStream = micStream;
 
+        const audioTracks = micStream.getAudioTracks();
+        if (!audioTracks.length || audioTracks[0].readyState !== "live") {
+          micStream.getTracks().forEach((track) => track.stop());
+          throw new Error("Mic stream has no live audio track.");
+        }
 
-      const audioTracks = micStream.getAudioTracks();
-      if (!audioTracks.length || audioTracks[0].readyState !== "live") {
-        micStream.getTracks().forEach((track) => track.stop());
-        throw new Error("Mic stream has no live audio track.");
-      }
-
-
-      let ctx;
-      let musicSource = null;
-      let isFallbackCtx = false;
-      try {
-        // Do NOT reset the graph — reuse the live AudioContext so music
-        // keeps playing without a glitch or dropout when recording starts.
-        const g = getOrCreateElementGraph(audioElement);
-        ctx = g.ctx;
-        musicSource = g.musicSource;
-        session.audioElement = audioElement;
+        // Re-check and ensure context is running
         if (ctx.state === "suspended") {
           await ctx.resume();
         }
-      } catch (err) {
-        console.warn(
-          "[KaraokeRecorder] Music routing unavailable — recording voice only:",
-          err
-        );
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        ctx = new AudioCtx({ latencyHint: "interactive" });
-        isFallbackCtx = true;
-        if (ctx.state === "suspended") {
-          await ctx.resume();
-        }
-        setRecordingWarning(
-          "Music could not be mixed into this recording — voice only."
-        );
-      }
-
-
-      session.ctx = ctx;
-      session.isFallbackCtx = isFallbackCtx;
 
       const capture = ctx.createMediaStreamDestination();
-
 
       const compressor = ctx.createDynamicsCompressor();
       compressor.threshold.value = -12;
@@ -266,46 +277,71 @@ export function useKaraokeRecorder() {
       const musicGain = ctx.createGain();
       musicGain.gain.value = session.musicVolume;
 
-      // Sidechain ducking: music → duckGain → compressor.
-      // The duckGain is driven down automatically when the mic detects singing,
-      // so the vocal sits on top of the mix regardless of the fixed musicVolume.
+      // Sidechain ducking: music → duckGain → compressor
       const duckGain = ctx.createGain();
       duckGain.gain.value = 1;
 
       if (musicSource) {
         musicSource.connect(musicGain);
-        musicGain.connect(duckGain); // route through ducker instead of direct to compressor
+        musicGain.connect(duckGain);
         duckGain.connect(compressor);
       }
 
-      // Dedicated voice bus: rumble filter -> user gain -> gentle compression
-      // with makeup gain. The old single shared bus only ducked loud peaks,
-      // so quiet voices stayed buried under the music.
+      // High-clarity vocal bus: rumble filter -> presence boost -> user mic gain -> vocal compressor -> makeup gain
       const micSource = ctx.createMediaStreamSource(micStream);
 
       const voiceFilter = ctx.createBiquadFilter();
       voiceFilter.type = "highpass";
-      voiceFilter.frequency.value = 85;
+      voiceFilter.frequency.value = 80;
 
-      const voiceCompressor = ctx.createDynamicsCompressor();
-      voiceCompressor.threshold.value = -18;
-      voiceCompressor.knee.value = 24;
-      voiceCompressor.ratio.value = 3;
-      voiceCompressor.attack.value = 0.003;
-      voiceCompressor.release.value = 0.25;
-
-      const voiceMakeup = ctx.createGain();
-      voiceMakeup.gain.value = 1.6;
+      const voicePresence = ctx.createBiquadFilter();
+      voicePresence.type = "peaking";
+      voicePresence.frequency.value = 3200;
+      voicePresence.gain.value = 3.5;
+      voicePresence.Q.value = 1.0;
 
       const micGain = ctx.createGain();
       micGain.gain.value = session.micVolume;
 
+      const voiceCompressor = ctx.createDynamicsCompressor();
+      voiceCompressor.threshold.value = -24;
+      voiceCompressor.knee.value = 20;
+      voiceCompressor.ratio.value = 3.5;
+      voiceCompressor.attack.value = 0.003;
+      voiceCompressor.release.value = 0.18;
+
+      const voiceMakeup = ctx.createGain();
+      voiceMakeup.gain.value = 2.6;
+
       micSource.connect(voiceFilter);
-      voiceFilter.connect(micGain);
+      voiceFilter.connect(voicePresence);
+      voicePresence.connect(micGain);
       micGain.connect(voiceCompressor);
       voiceCompressor.connect(voiceMakeup);
       voiceMakeup.connect(capture);
 
+      // Active real-time vocal ducking: slightly dips background music during active singing
+      const duckAnalyser = ctx.createAnalyser();
+      duckAnalyser.fftSize = 256;
+      micSource.connect(duckAnalyser);
+      const duckBuffer = new Float32Array(duckAnalyser.fftSize);
+
+      session.duckInterval = setInterval(() => {
+        try {
+          if (!session.recorder || session.recorder.state !== "recording") return;
+          duckAnalyser.getFloatTimeDomainData(duckBuffer);
+          let sum = 0;
+          for (let i = 0; i < duckBuffer.length; i++) {
+            sum += duckBuffer[i] * duckBuffer[i];
+          }
+          const rms = Math.sqrt(sum / duckBuffer.length);
+          if (rms > 0.012) {
+            duckGain.gain.setTargetAtTime(0.72, ctx.currentTime, 0.04);
+          } else {
+            duckGain.gain.setTargetAtTime(1.0, ctx.currentTime, 0.35);
+          }
+        } catch {}
+      }, 50);
 
       const monitorGain = ctx.createGain();
       monitorGain.gain.value = session.monitorEnabled ? 0.3 : 0;
@@ -327,6 +363,11 @@ export function useKaraokeRecorder() {
         };
         recorder.onstop = () => {
 
+          if (session.musicSource && session.musicGain) {
+            try {
+              session.musicSource.disconnect(session.musicGain);
+            } catch {}
+          }
           try {
             musicGain.disconnect();
           } catch {}
@@ -344,6 +385,9 @@ export function useKaraokeRecorder() {
           } catch {}
           try {
             voiceFilter.disconnect();
+          } catch {}
+          try {
+            voicePresence.disconnect();
           } catch {}
           try {
             voiceCompressor.disconnect();
@@ -367,16 +411,21 @@ export function useKaraokeRecorder() {
           session.recorder = null;
           session.capture = null;
           session.musicGain = null;
+          session.musicSource = null;
           session.micSource = null;
           session.micGain = null;
           session.monitorGain = null;
           session.voiceFilter = null;
+          session.voicePresence = null;
           session.voiceCompressor = null;
           session.voiceMakeup = null;
           if (session.micStream) {
             session.micStream.getTracks().forEach((track) => track.stop());
             session.micStream = null;
           }
+          const durationSec = Math.max(1, (Date.now() - session.startedAt) / 1000);
+          setRecordedDuration(durationSec);
+          session.recordedDuration = durationSec;
           stopTimer();
           setElapsed(0);
 
@@ -422,12 +471,19 @@ export function useKaraokeRecorder() {
             session.micStream = null;
           }
 
+          if (session.musicSource && session.musicGain) {
+            try {
+              session.musicSource.disconnect(session.musicGain);
+            } catch {}
+          }
+          session.musicSource = null;
           try { musicGain.disconnect(); } catch {}
           try { micSource.disconnect(); } catch {}
           try { micGain.disconnect(); } catch {}
           try { monitorGain.disconnect(); } catch {}
           try { compressor.disconnect(); } catch {}
           try { voiceFilter.disconnect(); } catch {}
+          try { voicePresence.disconnect(); } catch {}
           try { voiceCompressor.disconnect(); } catch {}
           try { voiceMakeup.disconnect(); } catch {}
           // Sidechain ducking cleanup
@@ -472,12 +528,13 @@ export function useKaraokeRecorder() {
           session.musicProbeTimer = setTimeout(() => {
             session.musicProbeTimer = null;
             try {
+              if (audioElement.paused) return;
               const data = new Float32Array(analyser.fftSize);
               analyser.getFloatTimeDomainData(data);
               let sum = 0;
               for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
               const rms = Math.sqrt(sum / data.length);
-              if (rms < 0.002) {
+              if (rms < 0.0005 && !audioElement.paused && audioElement.currentTime > 1) {
                 setRecordingWarning(
                   "Music may not be audible in this recording — check your audio and try again."
                 );
@@ -489,7 +546,7 @@ export function useKaraokeRecorder() {
                 analyser.disconnect();
               } catch {}
             }
-          }, 600);
+          }, 1800);
         }
 
         stopTimer();
@@ -536,6 +593,7 @@ export function useKaraokeRecorder() {
     setRecordingError(null);
     setRecordingWarning(null);
     setElapsed(0);
+    setRecordedDuration(0);
   }, []);
 
   return {
@@ -545,6 +603,7 @@ export function useKaraokeRecorder() {
     recordingError,
     recordingWarning,
     elapsed,
+    recordedDuration,
     monitorEnabled,
     startRecording,
     stopRecording,
